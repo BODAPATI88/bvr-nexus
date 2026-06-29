@@ -1,0 +1,30 @@
+input:
+  type: object
+  required: [action]
+  properties:
+    action:
+      type: string
+      enum: [clone, create_pr, review, list_issues, create_issue]
+    repo_url:
+      type: string
+      format: uri
+    branch:
+      type: string
+      default: "main"
+    title:
+      type: string
+    body:
+      type: string
+
+output:
+  type: object
+  properties:
+    result:
+      type: string
+    url:
+      type: string
+      format: uri
+    files:
+      type: array
+      items:
+        type: string

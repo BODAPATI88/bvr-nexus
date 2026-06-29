@@ -1,0 +1,342 @@
+# BVR Constitution — Capability Provider Selection
+# This file is the single source of truth for "who does what and in what order."
+# The Capability Matcher reads this at boot. No runtime surprises.
+
+schema: bvr.constitution.v1
+version: "2.1.0"
+description: |
+  Declared priority lists for all capabilities.
+  When a workflow requests a capability, the Matcher walks this list
+  top-to-bottom and selects the first healthy provider.
+
+# ── Global Defaults ──
+defaults:
+  selection_mode: priority      # priority | cost | latency | round_robin
+  fallback_enabled: true
+  max_retries: 3
+  health_check_required: true
+  cost_limit_usd: 5.00
+
+# ── Capability: web_search ──
+capabilities:
+  web_search:
+    description: "Search the web and return relevant results"
+    version: "1.0.0"
+    input_schema: "schemas/web_search_input.json"
+    output_schema: "schemas/web_search_output.json"
+    required_permissions: ["web_search:read"]
+    sla:
+      max_duration_ms: 10000
+      max_cost_usd: 0.10
+      max_retry_count: 2
+
+    providers:
+      - id: tavily
+        name: "Tavily Search"
+        plugin_id: "search/tavily"
+        priority: 1                    # PRIMARY
+        selection:
+          cost_weight: 0.3
+          latency_weight: 0.4
+          quality_weight: 0.3
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 100, window: "1m"}
+          max_cost_per_call: 0.05
+          allowed_regions: ["us-east-1", "eu-west-1"]
+        config:
+          api_key: "vault://secrets/tavily/api_key"
+          base_url: "https://api.tavily.com"
+          timeout: "10s"
+        cost:
+          per_request: 0.025
+
+      - id: brave
+        name: "Brave Search API"
+        plugin_id: "search/brave"
+        priority: 2                    # FALLBACK 1
+        selection:
+          cost_weight: 0.5
+          latency_weight: 0.3
+          quality_weight: 0.2
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 200, window: "1m"}
+          max_cost_per_call: 0.03
+        config:
+          api_key: "vault://secrets/brave/api_key"
+          base_url: "https://api.search.brave.com"
+          timeout: "10s"
+        cost:
+          per_request: 0.015
+
+      - id: google_search
+        name: "Google Custom Search"
+        plugin_id: "search/google"
+        priority: 3                    # FALLBACK 2
+        selection:
+          cost_weight: 0.4
+          latency_weight: 0.3
+          quality_weight: 0.3
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 100, window: "1m"}
+          max_cost_per_call: 0.05
+        config:
+          api_key: "vault://secrets/google/api_key"
+          base_url: "https://www.googleapis.com/customsearch/v1"
+          timeout: "15s"
+        cost:
+          per_request: 0.05
+
+  # ── Capability: code_analysis ──
+  code_analysis:
+    description: "Analyze code for patterns, quality, and architecture"
+    version: "1.0.0"
+    input_schema: "schemas/code_analysis_input.json"
+    output_schema: "schemas/code_analysis_output.json"
+    required_permissions: ["code:read"]
+    sla:
+      max_duration_ms: 30000
+      max_cost_usd: 0.50
+      max_retry_count: 1
+
+    providers:
+      - id: claude_code
+        name: "Claude Code Analysis"
+        plugin_id: "ai/claude"
+        priority: 1
+        selection:
+          cost_weight: 0.3
+          latency_weight: 0.2
+          quality_weight: 0.5
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 50, window: "1m"}
+          max_cost_per_call: 0.50
+        config:
+          api_key: "vault://secrets/anthropic/api_key"
+          model: "claude-sonnet-4"
+          timeout: "30s"
+        cost:
+          per_input_token: 0.003
+          per_output_token: 0.015
+
+      - id: gpt_code
+        name: "GPT Code Analysis"
+        plugin_id: "ai/gpt"
+        priority: 2
+        selection:
+          cost_weight: 0.4
+          latency_weight: 0.3
+          quality_weight: 0.3
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 100, window: "1m"}
+          max_cost_per_call: 0.40
+        config:
+          api_key: "vault://secrets/openai/api_key"
+          model: "gpt-5"
+          timeout: "30s"
+        cost:
+          per_input_token: 0.0025
+          per_output_token: 0.012
+
+      - id: kimi_code
+        name: "Kimi Code Analysis"
+        plugin_id: "ai/kimi"
+        priority: 3
+        selection:
+          cost_weight: 0.6
+          latency_weight: 0.2
+          quality_weight: 0.2
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 200, window: "1m"}
+          max_cost_per_call: 0.30
+        config:
+          api_key: "vault://secrets/kimi/api_key"
+          model: "kimi-k2"
+          timeout: "30s"
+        cost:
+          per_input_token: 0.001
+          per_output_token: 0.005
+
+  # ── Capability: send_notification ──
+  send_notification:
+    description: "Send notifications to various channels"
+    version: "1.0.0"
+    input_schema: "schemas/notification_input.json"
+    output_schema: "schemas/notification_output.json"
+    required_permissions: ["notification:send"]
+    sla:
+      max_duration_ms: 5000
+      max_cost_usd: 0.01
+      max_retry_count: 3
+
+    providers:
+      - id: slack
+        name: "Slack"
+        plugin_id: "productivity/slack"
+        priority: 1
+        selection:
+          cost_weight: 0.8
+          latency_weight: 0.2
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 1000, window: "1m"}
+        config:
+          token: "vault://secrets/slack/bot_token"
+          webhook_url: "vault://secrets/slack/webhook_url"
+          timeout: "5s"
+        cost:
+          per_request: 0.0
+
+      - id: email
+        name: "Email (SMTP)"
+        plugin_id: "productivity/email"
+        priority: 2
+        selection:
+          cost_weight: 0.9
+          latency_weight: 0.1
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 100, window: "1m"}
+        config:
+          smtp_host: "vault://secrets/smtp/host"
+          smtp_user: "vault://secrets/smtp/user"
+          smtp_password: "vault://secrets/smtp/password"
+          timeout: "10s"
+        cost:
+          per_request: 0.0
+
+  # ── Capability: deploy_container ──
+  deploy_container:
+    description: "Deploy containers to orchestration platforms"
+    version: "1.0.0"
+    required_permissions: ["infrastructure:write"]
+    sla:
+      max_duration_ms: 120000
+      max_cost_usd: 1.00
+      max_retry_count: 2
+
+    providers:
+      - id: kubernetes
+        name: "Kubernetes"
+        plugin_id: "devops/kubernetes"
+        priority: 1
+        selection:
+          cost_weight: 0.5
+          latency_weight: 0.3
+          quality_weight: 0.2
+          fallback_enabled: false
+        constraints:
+          rate_limit: {requests: 20, window: "1m"}
+          allowed_regions: ["us-east-1", "eu-west-1"]
+          requires_approval: true
+        config:
+          kubeconfig: "vault://secrets/kubernetes/kubeconfig"
+          timeout: "120s"
+        cost:
+          per_request: 0.0
+
+      - id: docker_swarm
+        name: "Docker Swarm"
+        plugin_id: "devops/docker"
+        priority: 2
+        selection:
+          cost_weight: 0.7
+          latency_weight: 0.2
+          quality_weight: 0.1
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 50, window: "1m"}
+          requires_approval: false
+        config:
+          docker_host: "unix:///var/run/docker.sock"
+          timeout: "60s"
+        cost:
+          per_request: 0.0
+
+  # ── Capability: clone_repository ──
+  clone_repository:
+    description: "Clone a source code repository from a remote URL to local storage"
+    version: "1.0.0"
+    required_permissions: ["code:read"]
+    sla:
+      max_duration_ms: 120000
+      max_cost_usd: 0.0
+      max_retry_count: 1
+
+    providers:
+      - id: git_cli
+        name: "Git CLI"
+        plugin_id: "code/github"
+        priority: 1
+        selection:
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 30, window: "1m"}
+        config:
+          timeout: "120s"
+          max_depth: 1
+        cost:
+          per_request: 0.0
+
+  # ── Capability: knowledge_retrieval ──
+  knowledge_retrieval:
+    description: "Retrieve relevant context from the vector knowledge base"
+    version: "1.0.0"
+    required_permissions: ["knowledge:read"]
+    sla:
+      max_duration_ms: 5000
+      max_cost_usd: 0.01
+      max_retry_count: 2
+
+    providers:
+      - id: pgvector
+        name: "PostgreSQL pgvector"
+        plugin_id: "data/pgvector"
+        priority: 1
+        selection:
+          fallback_enabled: false
+        constraints:
+          rate_limit: {requests: 200, window: "1m"}
+        config:
+          top_k: 5
+          score_threshold: 0.75
+        cost:
+          per_request: 0.0
+
+# ── Per-Workflow Overrides ──
+# Some workflows need different provider priorities.
+# These override the global defaults for specific workflows.
+
+workflow_overrides:
+  bvr.review.repository:
+    code_analysis:
+      providers:
+        - id: claude_code
+          priority: 1          # Keep Claude primary for reviews
+        - id: gpt_code
+          priority: 2
+
+  bvr.achieve.resume-optimization:
+    code_analysis:
+      providers:
+        - id: gpt_code
+          priority: 1          # GPT is better at resume writing
+        - id: claude_code
+          priority: 2
+        - id: kimi_code
+          priority: 3
+
+  bvr.research.topic:
+    web_search:
+      providers:
+        - id: tavily
+          priority: 1
+        - id: brave
+          priority: 2
+      # Override: research needs higher quality, cost less important
+      selection_mode: quality

@@ -1,0 +1,58 @@
+id: bvr.research.topic
+namespace: bvr.knowledge
+
+description: |
+  Orchestrate topic research with webhook callback.
+
+tags:
+  - research
+  - knowledge
+  - orchestration
+
+inputs:
+  - id: topic
+    type: STRING
+    required: true
+  - id: depth
+    type: STRING
+    defaults: "standard"
+
+tasks:
+  - id: emit_event
+    type: io.kestra.plugin.http.Request
+    uri: "http://bvr-api:8000/api/v1/events"
+    method: POST
+    contentType: application/json
+    body: |
+      {
+        "event_type": "research.topic",
+        "payload": {
+          "topic": "{{ inputs.topic }}",
+          "depth": "{{ inputs.depth }}"
+        },
+        "correlation_id": "{{ execution.id }}",
+        "source": "kestra"
+      }
+    headers:
+      Authorization: "Bearer {{ secret('BVR_API_TOKEN') }}"
+
+  - id: wait_for_callback
+    type: io.kestra.plugin.http.Request
+    uri: "http://bvr-api:8000/api/v1/webhooks/kestra/wait/{{ execution.id }}"
+    method: GET
+    timeout: PT60S
+    headers:
+      Authorization: "Bearer {{ secret('BVR_API_TOKEN') }}"
+
+  - id: validate_result
+    type: io.kestra.plugin.core.debug.Echo
+    format: |
+      ✅ Research complete!
+      Confidence: {{ outputs.wait_for_callback.body.result.result.confidence }}
+      Artifact: {{ outputs.wait_for_callback.body.result.result.artifact_url }}
+
+sla:
+  - id: insight_time
+    type: io.kestra.plugin.core.condition.MaxDuration
+    duration: PT10M
+    # Target: Decision-ready summary in < 10 minutes

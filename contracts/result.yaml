@@ -1,0 +1,54 @@
+# BVR Core Contract: result.yaml
+# Defines standardized result format
+
+schema: bvr.contract.result.v1
+
+fields:
+  execution_id:
+    type: string
+    required: true
+
+  workflow_id:
+    type: string
+    required: true
+
+  status:
+    type: string
+    required: true
+    enum: [pending, running, success, failed, cancelled, paused]
+
+  outputs:
+    type: object
+    description: "Task outputs keyed by task ID"
+
+  artifacts:
+    type: array
+    items:
+      type: object
+      fields:
+        name: { type: string, required: true }
+        type: { type: string, enum: [report, document, json, csv, image, binary] }
+        location: { type: string, required: true }  # S3/MinIO path
+        size: { type: integer }
+        checksum: { type: string }
+    description: "Generated artifacts"
+
+  metrics:
+    type: object
+    fields:
+      duration_ms: { type: integer }
+      cost_usd: { type: number }
+      tokens_input: { type: integer }
+      tokens_output: { type: integer }
+      steps_executed: { type: integer }
+      steps_failed: { type: integer }
+    description: "Execution metrics"
+
+  outcome:
+    type: object
+    fields:
+      goal_id: { type: string }
+      achieved: { type: boolean }
+      measurement: { type: number }
+      unit: { type: string }
+    description: "Measurable outcome against goal.yaml"

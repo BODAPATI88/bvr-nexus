@@ -1,0 +1,28 @@
+input:
+  type: object
+  required: [text]
+  properties:
+    text:
+      type: string
+      description: "Message text to send"
+    channel:
+      type: string
+      default: "#general"
+      description: "Target Slack channel"
+    blocks:
+      type: array
+      description: "Optional Slack block kit blocks"
+
+output:
+  type: object
+  properties:
+    result:
+      type: string
+      enum: [sent, failed]
+    channel:
+      type: string
+    text_preview:
+      type: string
+    ts:
+      type: string
+      description: "Slack message timestamp"

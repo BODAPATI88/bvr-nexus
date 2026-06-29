@@ -1,0 +1,22 @@
+package bvr.data
+
+import future.keywords.if
+
+# ── Data Residency ──
+allowed_regions := ["us-east-1", "eu-west-1", "ap-south-1"]
+
+region_allowed if {
+    input.region in allowed_regions
+}
+
+# ── PII Handling ──
+no_pii_exposure if {
+    not input.contains_pii
+}
+
+# ── Data Classification ──
+allowed_classifications := ["public", "internal", "confidential"]
+
+classification_allowed if {
+    input.classification in allowed_classifications
+}

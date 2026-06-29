@@ -1,0 +1,79 @@
+id: bvr.review.repository
+namespace: bvr.devops
+
+description: |
+  Orchestrate repository review.
+  Kestra does NOT analyze code. It calls BVR API.
+  Uses webhook callback for async completion notification.
+
+tags:
+  - review
+  - architecture
+  - orchestration
+
+inputs:
+  - id: repo_url
+    type: STRING
+    required: true
+  - id: branch
+    type: STRING
+    defaults: "main"
+
+tasks:
+  - id: notify_start
+    type: io.kestra.plugin.core.debug.Echo
+    format: "🚀 Starting review for {{ inputs.repo_url }}"
+
+  - id: emit_event
+    type: io.kestra.plugin.http.Request
+    uri: "http://bvr-api:8000/api/v1/events"
+    method: POST
+    contentType: application/json
+    body: |
+      {
+        "event_type": "review.repository",
+        "payload": {
+          "repo_url": "{{ inputs.repo_url }}",
+          "branch": "{{ inputs.branch }}"
+        },
+        "correlation_id": "{{ execution.id }}",
+        "source": "kestra",
+        "priority": "normal"
+      }
+    headers:
+      Authorization: "Bearer {{ secret('BVR_API_TOKEN') }}"
+
+  - id: wait_for_callback
+    type: io.kestra.plugin.http.Request
+    uri: "http://bvr-api:8000/api/v1/webhooks/kestra/wait/{{ execution.id }}"
+    method: GET
+    timeout: PT60S
+    headers:
+      Authorization: "Bearer {{ secret('BVR_API_TOKEN') }}"
+
+  - id: validate_result
+    type: io.kestra.plugin.core.debug.Echo
+    format: |
+      ✅ Review complete!
+      Score: {{ outputs.wait_for_callback.body.result.result.score }}/100
+      Artifact: {{ outputs.wait_for_callback.body.result.result.artifact_url }}
+      Cost: ${{ outputs.wait_for_callback.body.result.result.cost_usd }}
+
+  - id: notify_slack
+    type: io.kestra.plugin.notifications.slack.SlackIncomingWebhook
+    url: "{{ secret('SLACK_WEBHOOK') }}"
+    payload: |
+      {
+        "text": "BVR Review Complete\nRepo: {{ inputs.repo_url }}\nScore: {{ outputs.wait_for_callback.body.result.result.score }}/100"
+      }
+
+sla:
+  - id: completion_time
+    type: io.kestra.plugin.core.condition.MaxDuration
+    duration: PT20M
+    # Target: Fix critical issues in < 20 minutes
+
+triggers:
+  - id: webhook
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: bvr-review-repo

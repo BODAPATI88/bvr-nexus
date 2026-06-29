@@ -1,0 +1,43 @@
+# BVR Core Contract: execution.yaml
+# Defines execution request contract
+
+schema: bvr.contract.execution.v1
+
+fields:
+  id:
+    type: string
+    required: true
+    description: "Unique execution ID (UUID)"
+
+  workflow_id:
+    type: string
+    required: true
+    description: "Reference to workflow.yaml id"
+
+  inputs:
+    type: object
+    description: "Runtime input values"
+
+  context:
+    type: object
+    fields:
+      user: { type: string, required: true }
+      session: { type: string }
+      trace_id: { type: string }
+      source: { type: string, enum: [cli, web, api, slack, vscode] }
+    description: "Execution context and provenance"
+
+  priority:
+    type: string
+    enum: [low, normal, high, critical]
+    default: normal
+
+  scheduled_at:
+    type: string
+    format: date-time
+    description: "When to execute (null = immediate)"
+
+  approval_required:
+    type: boolean
+    default: false
+    description: "Whether human approval is needed before execution"

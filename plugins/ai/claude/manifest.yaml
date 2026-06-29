@@ -1,0 +1,30 @@
+id: claude
+name: Anthropic Claude
+version: 2.0.0
+type: ai
+author: BVR Group
+description: |
+  Anthropic Claude integration for reasoning, code analysis,
+  and creative tasks. Supports Claude Sonnet 4.
+
+capabilities:
+  - code_analysis
+  - reasoning
+  - creative_writing
+  - document_review
+  - architecture_review
+
+dependencies:
+  - httpx>=0.27.0
+
+config:
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "claude-sonnet-4"
+  max_tokens: 4000
+  temperature: 0.7
+
+permissions:
+  - name: api_key
+    description: "Anthropic API key for authentication"
+    required: true
+    secret: true

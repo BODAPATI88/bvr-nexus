@@ -1,0 +1,28 @@
+id: github
+name: GitHub
+version: 2.0.0
+type: code
+author: BVR Group
+description: |
+  GitHub integration for repository operations,
+  PR management, and code analysis.
+
+capabilities:
+  - clone_repository
+  - create_pull_request
+  - review_code
+  - list_issues
+  - create_issue
+
+dependencies:
+  - PyGithub>=2.3.0
+
+config:
+  token: "${GITHUB_TOKEN}"
+  api_url: "https://api.github.com"
+
+permissions:
+  - name: token
+    description: "GitHub personal access token"
+    required: true
+    secret: true

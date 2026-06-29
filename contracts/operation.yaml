@@ -1,0 +1,48 @@
+# BVR Core Contract: operation.yaml
+# Defines operations & their actions
+
+schema: bvr.contract.operation.v1
+
+fields:
+  id:
+    type: string
+    required: true
+    description: "Unique operation identifier"
+
+  type:
+    type: string
+    required: true
+    enum: [atomic, composite, conditional, parallel]
+    description: "Operation execution pattern"
+
+  capability:
+    type: string
+    required: true
+    description: "Required capability from integration.yaml"
+
+  action:
+    type: string
+    required: true
+    description: "Specific action to perform"
+
+  preConditions:
+    type: array
+    items: string
+    description: "OPA policy checks before execution"
+
+  postConditions:
+    type: array
+    items: string
+    description: "Validation checks after execution"
+
+  idempotent:
+    type: boolean
+    default: true
+    description: "Whether operation can safely be retried"
+
+  rollback:
+    type: object
+    fields:
+      enabled: { type: boolean, default: false }
+      strategy: { type: string, enum: [compensating, retry, ignore] }
+    description: "Rollback behavior on failure"

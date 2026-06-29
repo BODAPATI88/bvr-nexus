@@ -1,0 +1,16 @@
+permissions:
+  - name: token
+    description: "Slack bot token"
+    required: true
+    secret: true
+    scope: global
+
+  - name: webhook_url
+    description: "Slack incoming webhook URL"
+    required: false
+    secret: true
+
+  - name: allowed_channels
+    description: "List of allowed channels"
+    default: ["#general", "#bvr-alerts"]
+    type: array

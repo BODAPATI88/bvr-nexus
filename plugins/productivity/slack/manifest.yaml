@@ -1,0 +1,26 @@
+id: slack
+name: Slack
+version: 2.0.0
+type: productivity
+author: BVR Group
+description: |
+  Slack integration for notifications and bot interactions.
+
+capabilities:
+  - send_message
+  - send_notification
+  - create_channel
+  - invite_user
+
+dependencies:
+  - slack-sdk>=3.27.0
+
+config:
+  token: "${SLACK_TOKEN}"
+  webhook_url: "${SLACK_WEBHOOK_URL}"
+
+permissions:
+  - name: token
+    description: "Slack bot token"
+    required: true
+    secret: true

@@ -1,0 +1,46 @@
+# BVR Core Contract: entity.yaml
+# Defines platform entities (vocabulary)
+
+schema: bvr.contract.entity.v1
+
+entities:
+  Repository:
+    fields:
+      url: { type: string, required: true }
+      branch: { type: string, default: "main" }
+      provider: { type: string, enum: [github, gitlab, bitbucket, azure] }
+      language: { type: string }
+      architecture: { type: string, enum: [monolith, microservices, serverless, event-driven] }
+
+  User:
+    fields:
+      id: { type: string, required: true }
+      email: { type: string, format: email }
+      roles: { type: array, items: string }
+      team: { type: string }
+      preferences: { type: object }
+
+  Workflow:
+    fields:
+      id: { type: string, required: true }
+      namespace: { type: string, required: true }
+      status: { type: string, enum: [active, deprecated, draft] }
+      owner: { type: string }
+      tags: { type: array, items: string }
+
+  Integration:
+    fields:
+      name: { type: string, required: true }
+      type: { type: string, required: true }
+      status: { type: string, enum: [connected, disconnected, error] }
+      last_check: { type: string, format: date-time }
+
+  Goal:
+    fields:
+      id: { type: string, required: true }
+      description: { type: string, required: true }
+      metric: { type: string, required: true }
+      target: { type: number, required: true }
+      unit: { type: string, required: true }
+      current: { type: number }
+      status: { type: string, enum: [on_track, at_risk, missed, achieved] }

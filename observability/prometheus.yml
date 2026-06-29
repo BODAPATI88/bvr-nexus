@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'kestra'
+    static_configs:
+      - targets: ['kestra:8080']
+    metrics_path: '/api/v1/metrics'
+
+  - job_name: 'bvr-cli'
+    static_configs:
+      - targets: ['bvr-cli-api:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'opa'
+    static_configs:
+      - targets: ['opa:8181']
+    metrics_path: '/metrics'

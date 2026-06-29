@@ -1,0 +1,78 @@
+# BVR Capability Registry Schema
+# Defines how capabilities are declared, matched, and resolved.
+# This is the Constitution's operational heart.
+
+schema: bvr.capability_registry.v1
+
+# ── Capability Definition ──
+# A capability is something the platform can DO.
+# Examples: web_search, code_analysis, send_notification, deploy_container
+
+capability:
+  id: string                    # Unique identifier: web_search, code_analysis
+  name: string                  # Human-readable name
+  description: string           # What this capability does
+  version: string               # Semantic version of the capability contract
+  input_schema: string          # Reference to JSON Schema for inputs
+  output_schema: string         # Reference to JSON Schema for outputs
+  required_permissions: [string] # What permissions are needed to use this
+  sla:                          # Service level expectations
+    max_duration_ms: integer
+    max_cost_usd: number
+    max_retry_count: integer
+  tags: [string]                # For discovery and filtering
+
+# ── Provider Definition ──
+# A provider is an IMPLEMENTATION of a capability.
+# Multiple providers can implement the same capability.
+
+provider:
+  id: string                    # Unique: brave_search, tavily_search, google_search
+  name: string                  # Human-readable
+  type: string                  # ai, devops, code, productivity, data
+  plugin_id: string             # Which plugin package provides this
+  manifest_path: string         # Path to plugin manifest
+  capabilities: [string]          # Which capabilities this provider implements
+
+  # ── Priority Declaration (Option A: Static, Constitution-driven) ──
+  priority:                     # Lower number = higher priority
+    default: integer            # Default priority across all workflows
+    per_workflow:                 # Override for specific workflows
+      - workflow_id: string
+        priority: integer
+
+  # ── Selection Criteria ──
+  selection:
+    cost_weight: number           # 0-1, how much cost matters
+    latency_weight: number        # 0-1, how much latency matters
+    quality_weight: number        # 0-1, how much quality matters
+    fallback_enabled: boolean     # Can this provider be a fallback?
+
+  # ── Operational Constraints ──
+  constraints:
+    rate_limit:                 # Requests per time window
+      requests: integer
+      window: string            # e.g., "1m", "1h"
+    max_cost_per_call: number   # USD
+    allowed_regions: [string]   # Data residency
+    requires_approval: boolean  # Human-in-the-loop required?
+
+  # ── Health & Status ──
+  health:
+    endpoint: string            # URL for health check
+    check_interval: string      # e.g., "30s"
+    timeout: string             # e.g., "5s"
+
+  # ── Configuration ──
+  config:                       # Provider-specific config
+    api_key: string             # Reference to Vault secret path
+    base_url: string
+    model: string               # For AI providers
+    timeout: string
+
+  # ── Cost Model ──
+  cost:
+    per_request: number         # Fixed cost per call
+    per_input_token: number     # For AI providers
+    per_output_token: number    # For AI providers
+    per_gb_transferred: number  # For data providers

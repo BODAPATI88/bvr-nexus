@@ -1,0 +1,81 @@
+# BVR Core Contract: workflow.yaml
+# Defines the structure of a workflow
+
+schema: bvr.contract.workflow.v1
+
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^[a-z0-9-_.]+$"
+    description: "Unique workflow identifier (e.g., bvr.review.repository)"
+
+  namespace:
+    type: string
+    required: true
+    description: "Logical grouping (e.g., bvr.devops, bvr.career)"
+
+  description:
+    type: string
+    required: true
+    description: "Human-readable purpose and expected outcome"
+
+  tags:
+    type: array
+    items: string
+    description: "Classification tags for discovery"
+
+  inputs:
+    type: array
+    items:
+      type: object
+      fields:
+        id: { type: string, required: true }
+        type: { type: string, enum: [STRING, INT, FLOAT, BOOLEAN, FILE, JSON] }
+        required: { type: boolean, default: false }
+        defaults: { type: any }
+        description: { type: string }
+    description: "Workflow input parameters"
+
+  tasks:
+    type: array
+    required: true
+    items:
+      type: object
+      fields:
+        id: { type: string, required: true }
+        type: { type: string, required: true }  # Kestra plugin type
+        description: { type: string }
+        dependsOn: { type: array, items: string }
+        retry: { type: object }  # Kestra retry spec
+        timeout: { type: string }  # ISO 8601 duration
+    description: "Ordered operations with dependencies"
+
+  triggers:
+    type: array
+    items:
+      type: object
+      fields:
+        id: { type: string, required: true }
+        type: { type: string, required: true }
+    description: "Event-based or scheduled triggers"
+
+  sla:
+    type: array
+    items:
+      type: object
+      fields:
+        id: { type: string, required: true }
+        type: { type: string, required: true }
+        duration: { type: string }  # ISO 8601
+    description: "Service level agreements / measurable outcomes"
+
+  outputs:
+    type: array
+    items:
+      type: object
+      fields:
+        id: { type: string, required: true }
+        type: { type: string, required: true }
+        description: { type: string }
+    description: "Expected workflow outputs (artifacts, metrics)"

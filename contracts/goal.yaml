@@ -1,0 +1,80 @@
+# BVR Core Contract: goal.yaml
+# Defines goals & measurable outcomes
+
+schema: bvr.contract.goal.v1
+
+fields:
+  id:
+    type: string
+    required: true
+    description: "Unique goal identifier"
+
+  description:
+    type: string
+    required: true
+    description: "Human-readable goal statement"
+
+  metric:
+    type: string
+    required: true
+    description: "Quantifiable metric name"
+
+  target:
+    type: number
+    required: true
+    description: "Target value"
+
+  unit:
+    type: string
+    required: true
+    description: "Unit of measurement (minutes, points, percent, dollars)"
+
+  workflow:
+    type: string
+    description: "Associated workflow that produces this outcome"
+
+  current:
+    type: number
+    description: "Current measured value"
+
+  status:
+    type: string
+    enum: [on_track, at_risk, missed, achieved]
+    description: "Current status against target"
+
+# Example Goals
+goals:
+  - id: fix_critical_issues
+    description: "Fix critical issues in < 20 minutes"
+    metric: mean_time_to_resolution
+    target: 20
+    unit: minutes
+    workflow: bvr.review.repository
+
+  - id: validated_design
+    description: "Validated design in < 30 minutes"
+    metric: workflow_duration
+    target: 30
+    unit: minutes
+    workflow: bvr.architect.solution
+
+  - id: decision_ready
+    description: "Decision-ready summary in < 10 minutes"
+    metric: time_to_insight
+    target: 10
+    unit: minutes
+    workflow: bvr.research.topic
+
+  - id: resume_optimization
+    description: "Increase ATS score by Y points"
+    metric: ats_score_delta
+    target: 15
+    unit: points
+    workflow: bvr.achieve.resume-optimization
+
+  - id: cost_reduction
+    description: "Reduce monthly cloud cost by X%"
+    metric: cost_reduction_percent
+    target: 15
+    unit: percent
+    workflow: bvr.achieve.cost-audit

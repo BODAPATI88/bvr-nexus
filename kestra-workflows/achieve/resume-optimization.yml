@@ -1,0 +1,59 @@
+id: bvr.achieve.resume-optimization
+namespace: bvr.career
+
+description: |
+  Orchestrate resume optimization with webhook callback.
+
+tags:
+  - career
+  - ats
+  - orchestration
+
+inputs:
+  - id: resume_content
+    type: STRING
+    required: true
+  - id: target_role
+    type: STRING
+    defaults: "Software Engineer"
+
+tasks:
+  - id: emit_event
+    type: io.kestra.plugin.http.Request
+    uri: "http://bvr-api:8000/api/v1/events"
+    method: POST
+    contentType: application/json
+    body: |
+      {
+        "event_type": "achieve.resume-optimization",
+        "payload": {
+          "resume_content": "{{ inputs.resume_content }}",
+          "target_role": "{{ inputs.target_role }}"
+        },
+        "correlation_id": "{{ execution.id }}",
+        "source": "kestra"
+      }
+    headers:
+      Authorization: "Bearer {{ secret('BVR_API_TOKEN') }}"
+
+  - id: wait_for_callback
+    type: io.kestra.plugin.http.Request
+    uri: "http://bvr-api:8000/api/v1/webhooks/kestra/wait/{{ execution.id }}"
+    method: GET
+    timeout: PT60S
+    headers:
+      Authorization: "Bearer {{ secret('BVR_API_TOKEN') }}"
+
+  - id: validate_result
+    type: io.kestra.plugin.core.debug.Echo
+    format: |
+      ✅ Resume optimized!
+      Before: {{ outputs.wait_for_callback.body.result.result.initial_score }}/100
+      After: {{ outputs.wait_for_callback.body.result.result.optimized_score }}/100
+      Delta: +{{ outputs.wait_for_callback.body.result.result.score_delta }} points
+
+sla:
+  - id: completion_time
+    type: io.kestra.plugin.core.condition.MaxDuration
+    duration: PT10M
+    # Target: Increase ATS score by Y points

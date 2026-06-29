@@ -1,0 +1,62 @@
+# BVR Core Contract: integration.yaml
+# Defines integrations & capabilities
+
+schema: bvr.contract.integration.v1
+
+fields:
+  id:
+    type: string
+    required: true
+    description: "Integration configuration ID"
+
+  integrations:
+    type: object
+    required: true
+    properties:
+      llm:
+        type: array
+        items:
+          type: object
+          fields:
+            name: { type: string, required: true }
+            type: { type: string, enum: [anthropic, openai, google, ollama, vllm] }
+            model: { type: string, required: true }
+            api_key: { type: string, secret: true }
+            host: { type: string }  # For local models
+
+      devops:
+        type: array
+        items:
+          type: object
+          fields:
+            name: { type: string, required: true }
+            type: { type: string, enum: [azure, aws, gcp, kubernetes, docker, terraform, ansible] }
+            credentials: { type: string, secret: true }
+            config: { type: object }
+
+      code:
+        type: array
+        items:
+          type: object
+          fields:
+            name: { type: string, required: true }
+            type: { type: string, enum: [github, gitlab, bitbucket, svn] }
+            token: { type: string, secret: true }
+
+      data:
+        type: array
+        items:
+          type: object
+          fields:
+            name: { type: string, required: true }
+            type: { type: string, enum: [postgresql, mysql, mongodb, elasticsearch, s3, blob] }
+            connection_string: { type: string, secret: true }
+
+      productivity:
+        type: array
+        items:
+          type: object
+          fields:
+            name: { type: string, required: true }
+            type: { type: string, enum: [slack, gmail, notion, teams, jira, confluence] }
+            token: { type: string, secret: true }

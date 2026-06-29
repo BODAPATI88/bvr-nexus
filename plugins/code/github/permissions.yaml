@@ -1,0 +1,16 @@
+permissions:
+  - name: token
+    description: "GitHub personal access token"
+    required: true
+    secret: true
+    scope: global
+
+  - name: rate_limit
+    description: "Rate limit for API calls"
+    default: 5000
+    unit: requests_per_hour
+
+  - name: allowed_repos
+    description: "List of allowed repository patterns"
+    default: ["*"]
+    type: array
