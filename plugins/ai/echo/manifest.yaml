@@ -1,0 +1,15 @@
+id: echo
+name: Echo AI (Development Stub)
+version: 1.0.0
+type: ai
+author: BVR Group
+description: |
+  Development stub that returns canned responses for e2e lifecycle validation.
+  Remove from constitution before production deployment.
+
+capabilities:
+  - code_analysis
+  - reasoning
+  - creative_writing
+
+config: {}

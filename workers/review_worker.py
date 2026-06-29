@@ -35,7 +35,7 @@ class ReviewWorker(BaseWorker):
 
         # Execute via plugin registry
         registry = self.registry
-        result = await registry.execute(provider.id, config, {
+        result = await registry.execute(provider.plugin_id, config, {
             "action": "clone",
             "repo_url": repo_url,
             "branch": branch
@@ -64,9 +64,8 @@ class ReviewWorker(BaseWorker):
         """
 
         llm_result = await ai_gateway_call(
-            capability="analysis",
+            capability="code_analysis",
             prompt=analysis_prompt,
-            model_preference="claude"
         )
 
         # Step 3: Parse LLM response
@@ -111,8 +110,8 @@ class ReviewWorker(BaseWorker):
         )
 
         # Step 5: Notify via Slack
-        slack = self.plugin("productivity/slack")
-        await slack.execute(
+        await self.registry.execute(
+            "productivity/slack",
             {"webhook_url": os.getenv("SLACK_WEBHOOK_URL", "")},
             {
                 "text": f"Review complete for {repo_url}\nScore: {score}/100",
