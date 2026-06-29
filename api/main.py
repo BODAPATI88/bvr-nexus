@@ -12,6 +12,8 @@ import uuid
 import json
 import os
 import redis.asyncio as aioredis
+import httpx
+import asyncio
 import asyncpg
 from contextlib import asynccontextmanager
 
@@ -84,6 +86,9 @@ async def lifespan(app: FastAPI):
     app.state.db = await asyncpg.create_pool(
         dsn=os.getenv("DATABASE_URL").replace("+asyncpg","")
     )
+
+    async with app.state.db.acquire() as conn:
+        await conn.execute(INIT_SQL)
     yield
     # Shutdown
     await app.state.redis.close()
@@ -333,15 +338,6 @@ CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 """
-
-@app.on_event("startup")
-async def init_db():
-    pool = await asyncpg.create_pool(
-        dsn=os.getenv("DATABASE_URL").replace("+asyncpg","")
-    )
-    async with pool.acquire() as conn:
-        await conn.execute(INIT_SQL)
-    await pool.close()
 
 # ── Input Validation Schemas ──
 
