@@ -26,6 +26,7 @@ logs/
 data/
 postgres_data/
 redis_data/
+dump.rdb
 minio_data/
 kestra_data/
 ollama_data/
