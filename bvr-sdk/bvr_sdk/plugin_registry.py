@@ -82,7 +82,7 @@ class PluginRegistry:
                         worker_module = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(worker_module)
 
-                    self._plugins[plugin_id] = {
+                    entry = {
                         "manifest": manifest,
                         "schema": schema,
                         "permissions": permissions,
@@ -91,6 +91,9 @@ class PluginRegistry:
                         "path": str(plugin_dir),
                         "category": category_dir.name,
                     }
+                    self._plugins[plugin_id] = entry
+                    # Also register by category/id path so constitution plugin_id refs resolve
+                    self._plugins[f"{category_dir.name}/{plugin_id}"] = entry
 
                     print(f"[PLUGIN] Registered: {plugin_id} ({manifest['name']} v{manifest['version']})")
 
