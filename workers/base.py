@@ -48,10 +48,12 @@ class BaseWorker(ABC):
         )
         print(f"[WORKER] {self.worker_id} registered and ready")
 
-        # Subscribe to events
+        # Subscribe to events — one group per worker type so every event
+        # reaches every worker type independently (fanout), with filtering
+        # inside subscribe() discarding non-matching event types cheaply.
         await subscribe(
             event_types=self.capabilities,
-            consumer_group="bvr-workers",
+            consumer_group=f"bvr-{self.worker_id}",
             consumer_name=self.worker_id,
             handler=self._handle_event
         )
