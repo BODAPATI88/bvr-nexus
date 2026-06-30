@@ -1,15 +1,10 @@
-# BVR NEXUS v2 — Revised Implementation
-# Principles:
-#   • Kestra orchestrates only
-#   • BVR API + Workers handle business logic
-#   • PostgreSQL + pgvector for everything data
-#   • Redis for cache + lightweight messaging
-#   • Traefik only (no Kong overlap)
-#   • No Weaviate, ClickHouse, Kafka
+# BVR NEXUS v2 — Production Base Configuration
+# For development: docker compose up          (auto-applies docker-compose.override.yml)
+# For production:  docker compose -f docker-compose.yml up -d
 
 services:
   # ───────────────────────────────────────────
-  # L4. DATA & STATE LAYER (Simplified)
+  # L4. DATA & STATE LAYER
   # ───────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
@@ -18,15 +13,13 @@ services:
       - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bvr}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-bvr_nexus}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./api/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bvr -d bvr_nexus"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bvr} -d ${POSTGRES_DB:-bvr_nexus}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +29,6 @@ services:
   redis:
     image: redis:7.2.4-alpine
     container_name: bvr-redis
-    # NO PORT BINDING — internal Docker network only
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -56,10 +48,9 @@ services:
       - .env
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-bvradmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9000:9000"
-      - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -73,22 +64,24 @@ services:
   minio-init:
     image: minio/mc:latest
     container_name: bvr-minio-init
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-bvradmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 bvradmin bvrsecret123;
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
       mc mb local/bvr-artifacts --ignore-existing;
       mc mb local/bvr-logs --ignore-existing;
-      mc policy set public local/bvr-artifacts;
       echo 'MinIO initialized.'
       "
     networks:
       - bvr-network
 
   # ───────────────────────────────────────────
-  # L1. ORCHESTRATION LAYER (Kestra — Orchestration Only)
+  # L1. ORCHESTRATION LAYER (Kestra)
   # ───────────────────────────────────────────
   kestra:
     image: kestra/kestra:v0.18.0
@@ -102,10 +95,10 @@ services:
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:
-            url: jdbc:postgresql://postgres:5432/bvr_nexus
+            url: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-bvr_nexus}
             driverClassName: org.postgresql.Driver
             username: ${POSTGRES_USER:-bvr}
-            password: ${POSTGRES_PASSWORD:-changeme}
+            password: ${POSTGRES_PASSWORD}
         kestra:
           repository:
             type: postgres
@@ -115,16 +108,16 @@ services:
             type: minio
             minio:
               endpoint: http://minio:9000
-              accessKey: bvradmin
-              secretKey: bvrsecret123
+              accessKey: ${MINIO_ROOT_USER:-bvradmin}
+              secretKey: ${MINIO_ROOT_PASSWORD}
               bucket: bvr-artifacts
               region: us-east-1
           url: http://localhost:8080/
           server:
             basic-auth:
-              enabled: false
-    ports:
-      - "8080:8080"
+              enabled: true
+              username: ${KESTRA_ADMIN_USERNAME}
+              password: ${KESTRA_ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,7 +132,6 @@ services:
       retries: 5
       start_period: 60s
     volumes:
-      # Docker socket REMOVED for security (was: /var/run/docker.sock:/var/run/docker.sock)
       - kestra_data:/app/storage
       - ./kestra-workflows:/local-flows:ro
     networks:
@@ -152,20 +144,20 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
-      network: host        # Allows pip to reach egress proxy during build
+      network: host
     container_name: bvr-api
     environment:
-      DATABASE_URL: postgresql+asyncpg://bvr:bvrsecret@postgres:5432/bvr_nexus
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: bvradmin
-      MINIO_SECRET_KEY: bvrsecret123
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-bvradmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       OPA_URL: http://opa:8181
       VAULT_URL: http://vault:8200
-      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN_ID:-bvr-root-token}
+      VAULT_TOKEN: ${VAULT_TOKEN}
       KESTRA_URL: http://kestra:8080
       AI_GATEWAY_URL: http://ai-gateway:8000
-      BVR_SERVICE_TOKEN: ${BVR_SERVICE_TOKEN:-bvr-service-token}
+      BVR_SERVICE_TOKEN: ${BVR_SERVICE_TOKEN}
     ports:
       - "8000:8000"
     volumes:
@@ -204,7 +196,7 @@ services:
       KIMI_API_KEY: ${KIMI_API_KEY:-}
       OLLAMA_URL: http://ollama:11434
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql+asyncpg://bvr:bvrsecret@postgres:5432/bvr_nexus
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
       BVR_CONSTITUTION: /app/contracts/constitution.yaml
       BVR_PLUGINS_DIR: /app/plugins
     ports:
@@ -217,7 +209,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # ollama removed from depends_on — optional local LLM, not required for startup
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
@@ -239,16 +230,15 @@ services:
     environment:
       BVR_API_URL: http://bvr-api:8000
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql+asyncpg://bvr:bvrsecret@postgres:5432/bvr_nexus
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: bvradmin
-      MINIO_SECRET_KEY: bvrsecret123
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-bvradmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       AI_GATEWAY_URL: http://ai-gateway:8000
       OPA_URL: http://opa:8181
       BVR_CONSTITUTION: /app/contracts/constitution.yaml
       BVR_PLUGINS_DIR: /app/plugins
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      # Make Python ssl module trust the egress proxy CA for dulwich HTTPS git clones
       SSL_CERT_FILE: /app/proxy-ca.crt
       REQUESTS_CA_BUNDLE: /app/proxy-ca.crt
     volumes:
@@ -256,7 +246,7 @@ services:
       - ./contracts:/app/contracts:ro
     depends_on:
       bvr-api:
-        condition: service_healthy      # Wait for API to be ready, not just started
+        condition: service_healthy
       redis:
         condition: service_healthy
       postgres:
@@ -286,11 +276,8 @@ services:
   ollama:
     image: ollama/ollama:0.1.48
     container_name: bvr-ollama
-    ports:
-      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    # Serve only — model pull deferred to avoid blocking startup
     command: serve
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
@@ -310,8 +297,6 @@ services:
     command: run --server --addr :8181 --log-level info /policies
     volumes:
       - ./governance/rego:/policies:ro
-    # OPA uses a scratch image (no shell/curl/wget) so healthcheck is disabled.
-    # OPA typically starts in <2s; bvr-api waits for service_started only.
     networks:
       - bvr-network
 
@@ -321,13 +306,11 @@ services:
     cap_add:
       - IPC_LOCK
     environment:
-      # Dev mode: auto-initialised, auto-unsealed, token = VAULT_DEV_ROOT_TOKEN_ID
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:-bvr-root-token}
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
       VAULT_ADDR: http://0.0.0.0:8200
-    command: server -dev
-    ports:
-      - "8200:8200"
+    command: server -config=/vault/config/vault.hcl
+    volumes:
+      - ./vault/config:/vault/config:ro
+      - vault_data:/vault/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8200/v1/sys/health"]
       interval: 10s
@@ -337,21 +320,21 @@ services:
       - bvr-network
 
   keycloak:
-    # Using Docker Hub image (quay.io/keycloak/keycloak is blocked in some envs)
     image: keycloak/keycloak:25.0.1
     container_name: bvr-keycloak
-    command: start-dev
+    command: start
     env_file:
       - .env
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/bvr_nexus
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-bvr_nexus}
       KC_DB_USERNAME: ${POSTGRES_USER:-bvr}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
-    ports:
-      - "8081:8080"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_PROXY_HEADERS: xforwarded
     depends_on:
       postgres:
         condition: service_healthy
@@ -373,8 +356,6 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-    ports:
-      - "9090:9090"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -391,10 +372,8 @@ services:
     container_name: bvr-grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
-    ports:
-      - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -412,9 +391,6 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.58.0
     container_name: bvr-jaeger
-    ports:
-      - "16686:16686"
-      - "4317:4317"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:14269/"]
       interval: 15s
@@ -426,8 +402,6 @@ services:
   loki:
     image: grafana/loki:3.0.0
     container_name: bvr-loki
-    ports:
-      - "3100:3100"
     volumes:
       - ./observability/loki-config.yml:/etc/loki/local-config.yaml:ro
     command: -config.file=/etc/loki/local-config.yaml
@@ -440,13 +414,12 @@ services:
       - bvr-network
 
   # ───────────────────────────────────────────
-  # L0. INGRESS (Traefik Only — No Kong Overlap)
+  # L0. INGRESS (Traefik)
   # ───────────────────────────────────────────
   traefik:
     image: traefik:v3.1.0
     container_name: bvr-traefik
     command:
-      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -455,10 +428,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8082:8080"  # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./gateway/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./gateway/traefik.prod.yml:/etc/traefik/traefik.yml:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
       interval: 15s

@@ -1,0 +1,54 @@
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: bvr-network
+
+http:
+  routers:
+    kestra:
+      rule: "Host(`kestra.localhost`)"
+      service: kestra
+      entryPoints:
+        - web
+
+    bvr-api:
+      rule: "Host(`api.localhost`)"
+      service: bvr-api
+      entryPoints:
+        - web
+      middlewares:
+        - rate-limit
+
+    grafana:
+      rule: "Host(`grafana.localhost`)"
+      service: grafana
+      entryPoints:
+        - web
+
+  services:
+    kestra:
+      loadBalancer:
+        servers:
+          - url: "http://kestra:8080"
+
+    bvr-api:
+      loadBalancer:
+        servers:
+          - url: "http://bvr-api:8000"
+
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://grafana:3000"
+
+  middlewares:
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
