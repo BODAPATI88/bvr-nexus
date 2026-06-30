@@ -30,14 +30,3 @@ spec:
   resources:
     requests:
       storage: 20Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ollama-pvc
-  namespace: bvr-nexus
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 30Gi

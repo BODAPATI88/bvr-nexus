@@ -29,8 +29,6 @@ spec:
               value: "postgresql+asyncpg://bvr:$(POSTGRES_PASSWORD)@postgres:5432/bvr_nexus"
             - name: REDIS_URL
               value: "redis://redis:6379"
-            - name: OLLAMA_URL
-              value: "http://ollama:11434"
             - name: BVR_CONSTITUTION
               value: "/app/contracts/constitution.yaml"
             - name: BVR_PLUGINS_DIR
