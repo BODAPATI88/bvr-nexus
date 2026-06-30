@@ -105,8 +105,9 @@ async def subscribe(
                             correlation_id=fields["correlation_id"],
                             priority=fields.get("priority", "normal"),
                         )
-                        # Discard events not owned by this consumer group
-                        if event.event_type not in event_types:
+                        # Discard terminal notification events and events not owned by this group
+                        if (event.event_type not in event_types
+                                or event.event_type.endswith((".completed", ".failed"))):
                             await r.xack("bvr:events", consumer_group, msg_id)
                             continue
                         try:

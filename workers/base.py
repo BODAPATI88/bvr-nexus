@@ -86,11 +86,6 @@ class BaseWorker(ABC):
             )
         except Exception as e:
             print(f"[ERROR] Worker {self.worker_id} failed: {e}")
-            await emit_event(
-                event_type=f"{event.event_type}.failed",
-                payload={"error": str(e)},
-                correlation_id=event.correlation_id
-            )
             await self._post_result(event.event_id, "failed", {"error": str(e)})
 
     async def _post_result(
