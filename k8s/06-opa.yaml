@@ -23,6 +23,8 @@ spec:
             - :8181
             - --log-level
             - info
+            - --ignore
+            - ".*"
             - /policies
           ports:
             - containerPort: 8181
