@@ -13,6 +13,30 @@ spec:
       labels:
         app: bvr-api
     spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -p 5432 -U bvr -d bvr_nexus; do
+                echo "Waiting for postgres..."
+                sleep 3
+              done
+              echo "Postgres is ready."
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
       containers:
         - name: bvr-api
           image: bodapati88/bvr-api:latest
