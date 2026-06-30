@@ -117,6 +117,24 @@ services:
     ports:
       - "3100:3100"
 
+  # Dev: expose Promtail admin UI for pipeline debugging
+  promtail:
+    ports:
+      - "9080:9080"
+
+  # Dev: expose exporters for direct scrape testing
+  node-exporter:
+    ports:
+      - "9100:9100"
+
+  postgres-exporter:
+    ports:
+      - "9187:9187"
+
+  redis-exporter:
+    ports:
+      - "9121:9121"
+
   ollama:
     ports:
       - "11434:11434"

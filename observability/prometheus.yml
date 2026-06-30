@@ -3,21 +3,68 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'prometheus'
+
+  # ─── Self ─────────────────────────────────────────────────────────────────
+  - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
 
-  - job_name: 'kestra'
+  # ─── Host ─────────────────────────────────────────────────────────────────
+  - job_name: node-exporter
     static_configs:
-      - targets: ['kestra:8080']
-    metrics_path: '/api/v1/metrics'
+      - targets: ['node-exporter:9100']
 
-  - job_name: 'bvr-cli'
+  # ─── Data layer ───────────────────────────────────────────────────────────
+  - job_name: postgres-exporter
     static_configs:
-      - targets: ['bvr-cli-api:8000']
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # ─── BVR application services ─────────────────────────────────────────────
+  # These will show DOWN until /metrics is instrumented in each service.
+  - job_name: bvr-api
+    static_configs:
+      - targets: ['bvr-api:8000']
     metrics_path: '/metrics'
 
-  - job_name: 'opa'
+  - job_name: ai-gateway
+    static_configs:
+      - targets: ['ai-gateway:8000']
+    metrics_path: '/metrics'
+
+  - job_name: bvr-workers
+    static_configs:
+      - targets: ['bvr-workers:8080']
+    metrics_path: '/metrics'
+
+  # ─── Orchestration ────────────────────────────────────────────────────────
+  # Kestra management server (8081) exposes Prometheus metrics at /prometheus
+  - job_name: kestra
+    static_configs:
+      - targets: ['kestra:8081']
+    metrics_path: '/prometheus'
+
+  # ─── Governance ───────────────────────────────────────────────────────────
+  - job_name: opa
     static_configs:
       - targets: ['opa:8181']
+    metrics_path: '/metrics'
+
+  # ─── Observability stack (self-monitoring) ─────────────────────────────────
+  - job_name: loki
+    static_configs:
+      - targets: ['loki:3100']
+    metrics_path: '/metrics'
+
+  - job_name: grafana
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'
+
+  - job_name: jaeger
+    static_configs:
+      - targets: ['jaeger:14269']
     metrics_path: '/metrics'
