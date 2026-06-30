@@ -162,6 +162,18 @@ capabilities:
           per_input_token: 0.001
           per_output_token: 0.005
 
+      # Development stub — remove before production deployment
+      - id: echo_ai
+        name: "Echo AI (Dev Stub)"
+        plugin_id: "ai/echo"
+        priority: 99
+        selection:
+          fallback_enabled: true
+        constraints: {}
+        config: {}
+        cost:
+          per_request: 0.0
+
   # ── Capability: send_notification ──
   send_notification:
     description: "Send notifications to various channels"

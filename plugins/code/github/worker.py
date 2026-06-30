@@ -1,6 +1,7 @@
-import subprocess
 import os
+import shutil
 from typing import Dict, Any
+from dulwich import porcelain
 
 async def execute(config: dict, inputs: dict) -> Dict[str, Any]:
     """Execute GitHub operations."""
@@ -11,15 +12,18 @@ async def execute(config: dict, inputs: dict) -> Dict[str, Any]:
         branch = inputs.get("branch", "main")
         target_dir = f"/tmp/repos/{os.path.basename(repo_url)}"
 
-        subprocess.run(
-            ["git", "clone", "-b", branch, "--depth", "1", repo_url, target_dir],
-            check=True,
-            capture_output=True
-        )
+        # Remove stale clone if present so re-runs work cleanly
+        if os.path.exists(target_dir):
+            shutil.rmtree(target_dir)
+        os.makedirs("/tmp/repos", exist_ok=True)
+
+        porcelain.clone(repo_url, target_dir, branch=branch.encode(), depth=1)
 
         # List files
         files = []
         for root, dirs, filenames in os.walk(target_dir):
+            # Skip .git directory
+            dirs[:] = [d for d in dirs if d != ".git"]
             for f in filenames:
                 files.append(os.path.relpath(os.path.join(root, f), target_dir))
 

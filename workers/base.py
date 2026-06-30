@@ -4,6 +4,8 @@ All workers inherit from this.
 """
 
 import asyncio
+from datetime import datetime, timezone
+import httpx
 import os
 import signal
 import sys
@@ -15,6 +17,8 @@ from bvr_sdk import (
     ai_gateway_call, upload_artifact,
     get_registry
 )
+
+BVR_API_URL = os.getenv("BVR_API_URL", "http://localhost:8000")
 
 class BaseWorker(ABC):
     """Base class for all BVR workers."""
@@ -48,10 +52,12 @@ class BaseWorker(ABC):
         )
         print(f"[WORKER] {self.worker_id} registered and ready")
 
-        # Subscribe to events
+        # Subscribe to events — one group per worker type so every event
+        # reaches every worker type independently (fanout), with filtering
+        # inside subscribe() discarding non-matching event types cheaply.
         await subscribe(
             event_types=self.capabilities,
-            consumer_group="bvr-workers",
+            consumer_group=f"bvr-{self.worker_id}",
             consumer_name=self.worker_id,
             handler=self._handle_event
         )
@@ -67,7 +73,12 @@ class BaseWorker(ABC):
 
             result = await self.handle(event)
 
-            # Emit completion event
+            # POST result back to API so event status transitions to completed
+            artifact_url = result.pop("artifact_url", None)
+            artifact_urls = [artifact_url] if artifact_url else None
+            await self._post_result(event.event_id, "completed", result, artifact_urls)
+
+            # Emit completion event to stream (for Kestra webhook subscribers)
             await emit_event(
                 event_type=f"{event.event_type}.completed",
                 payload=result,
@@ -80,6 +91,31 @@ class BaseWorker(ABC):
                 payload={"error": str(e)},
                 correlation_id=event.correlation_id
             )
+            await self._post_result(event.event_id, "failed", {"error": str(e)})
+
+    async def _post_result(
+        self,
+        event_id: str,
+        status: str,
+        result: Dict[str, Any],
+        artifact_urls: List[str] = None
+    ):
+        """POST the execution result back to the BVR API."""
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{BVR_API_URL}/api/v1/events/{event_id}/result",
+                    json={
+                        "event_id": event_id,
+                        "status": status,
+                        "result": result,
+                        "artifact_urls": artifact_urls,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    timeout=10.0
+                )
+        except Exception as e:
+            print(f"[WARN] Failed to post result for {event_id}: {e}", flush=True)
 
     @abstractmethod
     async def handle(self, event: EventEnvelope) -> Dict[str, Any]:

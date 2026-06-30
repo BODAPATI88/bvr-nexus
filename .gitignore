@@ -26,6 +26,7 @@ logs/
 data/
 postgres_data/
 redis_data/
+dump.rdb
 minio_data/
 kestra_data/
 ollama_data/
@@ -42,3 +43,6 @@ clickhouse_data/
 # Temporary
 tmp/
 temp/
+
+# Proxy CA cert for egress-proxied build environments — never commit the real cert
+docker/ca-bundle.crt

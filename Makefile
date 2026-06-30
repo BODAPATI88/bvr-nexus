@@ -1,4 +1,4 @@
-.PHONY: help build start stop status logs clean test lint
+.PHONY: help build start stop status logs clean test lint up up-prod
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -6,7 +6,13 @@ help: ## Show this help
 build: ## Build all Docker images
 	docker compose build
 
-start: ## Start the full BVR Nexus stack
+up: ## Start stack in development mode (applies docker-compose.override.yml)
+	docker compose up -d
+
+up-prod: ## Start stack in production mode (base config only, no dev overrides)
+	docker compose -f docker-compose.yml up -d
+
+start: ## Start the full BVR Nexus stack (legacy, uses start.sh)
 	chmod +x start.sh && ./start.sh
 
 stop: ## Stop all services
