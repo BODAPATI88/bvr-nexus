@@ -1,0 +1,385 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: bvr-nexus
+data:
+  init.sql: |
+    -- BVR Nexus Database Initialization
+    -- PostgreSQL + pgvector
+
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+    CREATE TABLE IF NOT EXISTS knowledge_documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source TEXT,
+        document_type TEXT,
+        embedding VECTOR(1536),
+        metadata JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_knowledge_embedding ON knowledge_documents USING ivfflat (embedding vector_cosine_ops);
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id UUID,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        changes JSONB,
+        ip_address INET,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+
+    CREATE TABLE IF NOT EXISTS cost_tracking (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id UUID,
+        workflow_id TEXT,
+        model_id TEXT,
+        tokens_input INT DEFAULT 0,
+        tokens_output INT DEFAULT 0,
+        cost_usd FLOAT DEFAULT 0.0,
+        duration_ms INT,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cost_workflow ON cost_tracking(workflow_id);
+    CREATE INDEX IF NOT EXISTS idx_cost_timestamp ON cost_tracking(timestamp);
+
+    CREATE TABLE IF NOT EXISTS approvals (
+        approval_id TEXT PRIMARY KEY,
+        action TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        approvers TEXT[] NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP WITH TIME ZONE,
+        expires_at TIMESTAMP WITH TIME ZONE,
+        approved_by TEXT,
+        denied_by TEXT,
+        approved_at TIMESTAMP WITH TIME ZONE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
+    CREATE INDEX IF NOT EXISTS idx_approvals_resource ON approvals(resource);
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policies
+  namespace: bvr-nexus
+data:
+  bvr.rego: |
+    package bvr
+
+    import future.keywords.if
+    import future.keywords.in
+
+    default allow := false
+
+    allow if {
+        input.action in ["review", "architect", "research", "achieve"]
+        user_has_role(input.user, "bvr-operator")
+        target_allowed(input.action, input.target)
+        rate_limit_ok(input.user)
+    }
+
+    allow if {
+        user_has_role(input.user, "bvr-admin")
+    }
+
+    user_has_role(user, role) if {
+        roles := data.bvr.users[user].roles
+        role in roles
+    }
+
+    target_allowed("review", target) if {
+        not startswith(target, "file:///etc")
+        not startswith(target, "file:///root")
+    }
+
+    target_allowed("architect", _) := true
+    target_allowed("research", _) := true
+    target_allowed("achieve", _) := true
+
+    rate_limit_ok(user) if {
+        count := data.bvr.rate_limits[user].request_count
+        count < 100
+    }
+
+    max_cost_per_execution := 5.00
+
+    cost_allowed if {
+        input.estimated_cost <= max_cost_per_execution
+    }
+
+    allowed_region(region) if {
+        region in ["us-east-1", "eu-west-1", "ap-south-1"]
+    }
+
+    no_pii_exposure if {
+        not input.contains_pii
+    }
+  cost.rego: |
+    package bvr.cost
+
+    import future.keywords.if
+    import future.keywords.in
+
+    max_cost_per_execution := 5.00
+    max_cost_per_day := 50.00
+    max_tokens_per_execution := 100000
+
+    cost_allowed if {
+        input.estimated_cost <= max_cost_per_execution
+    }
+
+    daily_cost_allowed if {
+        input.daily_cost <= max_cost_per_day
+    }
+
+    tokens_allowed if {
+        input.estimated_tokens <= max_tokens_per_execution
+    }
+
+    allowed_providers := ["claude", "gpt", "kimi", "ollama"]
+
+    provider_allowed if {
+        input.provider in allowed_providers
+    }
+
+    require_local_for_pii if {
+        input.contains_pii
+        input.provider == "ollama"
+    }
+  data_residency.rego: |
+    package bvr.data
+
+    import future.keywords.if
+
+    allowed_regions := ["us-east-1", "eu-west-1", "ap-south-1"]
+
+    region_allowed if {
+        allowed_regions[_] == input.region
+    }
+
+    no_pii_exposure if {
+        not input.contains_pii
+    }
+
+    allowed_classifications := ["public", "internal", "confidential"]
+
+    classification_allowed if {
+        allowed_classifications[_] == input.classification
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bvr-contracts
+  namespace: bvr-nexus
+data:
+  constitution.yaml: |
+    schema: bvr.constitution.v1
+    version: "2.1.0"
+    description: |
+      Declared priority lists for all capabilities.
+      When a workflow requests a capability, the Matcher walks this list
+      top-to-bottom and selects the first healthy provider.
+
+    defaults:
+      selection_mode: priority
+      fallback_enabled: true
+      max_retries: 3
+      health_check_required: true
+      cost_limit_usd: 5.00
+
+    capabilities:
+      web_search:
+        description: "Search the web and return relevant results"
+        version: "1.0.0"
+        required_permissions: ["web_search:read"]
+        sla:
+          max_duration_ms: 10000
+          max_cost_usd: 0.10
+          max_retry_count: 2
+        providers:
+          - id: tavily
+            name: "Tavily Search"
+            plugin_id: "search/tavily"
+            priority: 1
+            constraints:
+              rate_limit: {requests: 100, window: "1m"}
+              max_cost_per_call: 0.05
+            config:
+              api_key: "vault://secrets/tavily/api_key"
+            cost:
+              per_request: 0.025
+          - id: brave
+            name: "Brave Search API"
+            plugin_id: "search/brave"
+            priority: 2
+            config:
+              api_key: "vault://secrets/brave/api_key"
+            cost:
+              per_request: 0.015
+
+      code_analysis:
+        description: "Analyze code for patterns, quality, and architecture"
+        version: "1.0.0"
+        required_permissions: ["code:read"]
+        sla:
+          max_duration_ms: 30000
+          max_cost_usd: 0.50
+          max_retry_count: 1
+        providers:
+          - id: claude_code
+            name: "Claude Code Analysis"
+            plugin_id: "ai/claude"
+            priority: 1
+            config:
+              api_key: "vault://secrets/anthropic/api_key"
+              model: "claude-sonnet-4"
+            cost:
+              per_input_token: 0.003
+              per_output_token: 0.015
+          - id: gpt_code
+            name: "GPT Code Analysis"
+            plugin_id: "ai/gpt"
+            priority: 2
+            config:
+              api_key: "vault://secrets/openai/api_key"
+              model: "gpt-5"
+            cost:
+              per_input_token: 0.0025
+              per_output_token: 0.012
+          - id: kimi_code
+            name: "Kimi Code Analysis"
+            plugin_id: "ai/kimi"
+            priority: 3
+            config:
+              api_key: "vault://secrets/kimi/api_key"
+              model: "kimi-k2"
+            cost:
+              per_input_token: 0.001
+              per_output_token: 0.005
+          - id: echo_ai
+            name: "Echo AI (Dev Stub)"
+            plugin_id: "ai/echo"
+            priority: 99
+            config: {}
+            cost:
+              per_request: 0.0
+
+      send_notification:
+        description: "Send notifications to various channels"
+        version: "1.0.0"
+        required_permissions: ["notification:send"]
+        sla:
+          max_duration_ms: 5000
+          max_cost_usd: 0.01
+          max_retry_count: 3
+        providers:
+          - id: slack
+            name: "Slack"
+            plugin_id: "productivity/slack"
+            priority: 1
+            config:
+              token: "vault://secrets/slack/bot_token"
+              webhook_url: "vault://secrets/slack/webhook_url"
+            cost:
+              per_request: 0.0
+
+      knowledge_retrieval:
+        description: "Retrieve relevant context from the vector knowledge base"
+        version: "1.0.0"
+        required_permissions: ["knowledge:read"]
+        sla:
+          max_duration_ms: 5000
+          max_cost_usd: 0.01
+          max_retry_count: 2
+        providers:
+          - id: pgvector
+            name: "PostgreSQL pgvector"
+            plugin_id: "data/pgvector"
+            priority: 1
+            config:
+              top_k: 5
+              score_threshold: 0.75
+            cost:
+              per_request: 0.0
+
+    workflow_overrides:
+      bvr.review.repository:
+        code_analysis:
+          providers:
+            - id: claude_code
+              priority: 1
+            - id: gpt_code
+              priority: 2
+      bvr.achieve.resume-optimization:
+        code_analysis:
+          providers:
+            - id: gpt_code
+              priority: 1
+            - id: claude_code
+              priority: 2
+            - id: kimi_code
+              priority: 3
+      bvr.research.topic:
+        web_search:
+          providers:
+            - id: tavily
+              priority: 1
+            - id: brave
+              priority: 2
+          selection_mode: quality
+  capability_registry.yaml: |
+    schema: bvr.capability_registry.v1
+    capability:
+      id: string
+      name: string
+      description: string
+      version: string
+      required_permissions: [string]
+      sla:
+        max_duration_ms: integer
+        max_cost_usd: number
+        max_retry_count: integer
+    provider:
+      id: string
+      name: string
+      type: string
+      plugin_id: string
+      capabilities: [string]
+      priority:
+        default: integer
+      selection:
+        cost_weight: number
+        latency_weight: number
+        quality_weight: number
+        fallback_enabled: boolean
+      constraints:
+        rate_limit:
+          requests: integer
+          window: string
+        max_cost_per_call: number
+        allowed_regions: [string]
+        requires_approval: boolean
+      config:
+        api_key: string
+        base_url: string
+        model: string
+        timeout: string
+      cost:
+        per_request: number
+        per_input_token: number
+        per_output_token: number
