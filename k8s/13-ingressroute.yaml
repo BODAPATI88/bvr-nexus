@@ -1,6 +1,6 @@
 # Traefik IngressRoute — BVR Nexus public entry point
-# bvr.bvrinfra.in  →  bvr-api:8000  (all traffic)
-# bvr.bvrinfra.in/ai/  →  ai-gateway:8000  (AI Gateway, prefix stripped)
+# bvr.bvrinfra.in → bvr-api:8000
+# AI Gateway is internal only (http://ai-gateway:8000 inside the cluster)
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -11,25 +11,8 @@ spec:
     - web
     - websecure
   routes:
-    - match: Host(`bvr.bvrinfra.in`) && PathPrefix(`/ai`)
-      kind: Rule
-      middlewares:
-        - name: strip-ai-prefix
-      services:
-        - name: ai-gateway
-          port: 8000
     - match: Host(`bvr.bvrinfra.in`)
       kind: Rule
       services:
         - name: bvr-api
           port: 8000
----
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: strip-ai-prefix
-  namespace: bvr-nexus
-spec:
-  stripPrefix:
-    prefixes:
-      - /ai
