@@ -11,3 +11,4 @@ opentelemetry-sdk==1.25.0
 opentelemetry-exporter-otlp==1.25.0
 psutil==6.0.0
 PyJWT>=2.8.0
+dulwich>=0.21.7
