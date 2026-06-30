@@ -442,9 +442,9 @@ async def get_event_result(event_id: str):
     return EventResult(
         event_id=str(row["event_id"]),
         status=row["status"],
-        result=row["result"],
-        artifact_urls=row["artifact_urls"],
-        metrics=row["metrics"],
+        result=json.loads(row["result"]) if isinstance(row["result"], str) else row["result"],
+        artifact_urls=json.loads(row["artifact_urls"]) if isinstance(row["artifact_urls"], str) else row["artifact_urls"],
+        metrics=json.loads(row["metrics"]) if isinstance(row["metrics"], str) else row["metrics"],
         created_at=row["created_at"],
         updated_at=row["updated_at"]
     )
