@@ -49,15 +49,15 @@ class CompletionResponse(BaseModel):
     cached: bool = False
     duration_ms: Optional[int] = None
 
-async def call_provider(provider_id: str, config: dict, prompt: str, max_tokens: int, temperature: float) -> Dict[str, Any]:
+async def call_provider(plugin_id: str, config: dict, prompt: str, max_tokens: int, temperature: float) -> Dict[str, Any]:
     """Call a provider via its plugin."""
     from bvr_sdk import get_registry
 
     registry = get_registry()
-    plugin = registry.get_plugin(provider_id)
+    plugin = registry.get_plugin(plugin_id)
 
     if not plugin or not plugin.get("worker_module"):
-        raise ValueError(f"Provider plugin not found: {provider_id}")
+        raise ValueError(f"Provider plugin not found: {plugin_id}")
 
     execute_func = getattr(plugin["worker_module"], "execute")
     return await execute_func(
@@ -130,7 +130,7 @@ async def completions(request: CompletionRequest):
         try:
             config = matcher.get_provider_config(provider.id)
             result = await call_provider(
-                provider.id,
+                provider.plugin_id,
                 config,
                 request.prompt,
                 request.max_tokens,

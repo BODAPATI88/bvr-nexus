@@ -55,6 +55,17 @@ async def emit_event(
                 "timestamp": event.timestamp.isoformat(),
             }
         )
+        # Notify any Kestra long-poll waiting on this correlation_id
+        if event_type.endswith((".completed", ".failed")):
+            await r.publish(
+                f"bvr:webhook:{correlation_id}",
+                json.dumps({
+                    "correlation_id": correlation_id,
+                    "event_type": event_type,
+                    "status": "completed" if event_type.endswith(".completed") else "failed",
+                    "result": payload,
+                }),
+            )
     finally:
         await r.close()
 
@@ -94,6 +105,10 @@ async def subscribe(
                             correlation_id=fields["correlation_id"],
                             priority=fields.get("priority", "normal"),
                         )
+                        # Discard events not owned by this consumer group
+                        if event.event_type not in event_types:
+                            await r.xack("bvr:events", consumer_group, msg_id)
+                            continue
                         try:
                             await handler(event)
                             await r.xack("bvr:events", consumer_group, msg_id)

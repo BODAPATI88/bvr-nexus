@@ -213,12 +213,41 @@ class CapabilityMatcher:
         ]
 
     def get_provider_config(self, provider_id: str) -> Dict[str, Any]:
-        """Get configuration for a specific provider."""
+        """Get configuration for a specific provider, resolving vault:// refs via env vars."""
         for capability in self._capabilities.values():
             for provider in capability.providers:
                 if provider.id == provider_id:
-                    return provider.config
+                    return self._resolve_config(provider.config)
         return {}
+
+    def _resolve_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve vault:// secret references to environment variable values.
+
+        vault://secrets/anthropic/api_key -> ANTHROPIC_API_KEY env var
+        vault://secrets/openai/api_key    -> OPENAI_API_KEY env var
+        """
+        resolved = {}
+        for key, value in config.items():
+            if isinstance(value, str) and value.startswith("vault://"):
+                # vault://secrets/{service}/{secret_name}
+                parts = value[len("vault://"):].split("/")
+                if len(parts) >= 2:
+                    # Build env var name: last two path segments, uppercased and joined with _
+                    env_var = "_".join(parts[-2:]).upper()
+                else:
+                    env_var = parts[-1].upper()
+                env_value = os.getenv(env_var)
+                if env_value:
+                    resolved[key] = env_value
+                    print(f"[MATCHER] Resolved {value} -> {env_var}")
+                else:
+                    print(f"[MATCHER] WARNING: vault ref {value} has no env var {env_var}")
+                    resolved[key] = value  # keep original so callers can detect unresolved
+            elif isinstance(value, dict):
+                resolved[key] = self._resolve_config(value)
+            else:
+                resolved[key] = value
+        return resolved
 
 class CapabilityNotFound(Exception):
     pass

@@ -81,7 +81,7 @@ async def require_role(role: str):
 async def lifespan(app: FastAPI):
     # Startup
     app.state.redis = await aioredis.from_url(
-        "redis://redis:6379", decode_responses=True
+        os.getenv("REDIS_URL", "redis://redis:6379"), decode_responses=True
     )
     app.state.db = await asyncpg.create_pool(
         dsn=os.getenv("DATABASE_URL").replace("+asyncpg","")
