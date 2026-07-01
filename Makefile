@@ -37,10 +37,10 @@ clean: ## Remove all containers, volumes, and data
 	docker compose down -v
 	docker system prune -f
 
-test: ## Run all tests
-	pytest tests/ -v --tb=short
+test: ## Run unit tests (excludes integration tests requiring a live stack)
+	pytest tests/ -v --tb=short --ignore=tests/integration
 
-test-integration: ## Run integration tests
+test-integration: ## Run integration tests (requires live stack — docker compose up first)
 	pytest tests/integration/ -v --tb=short
 
 lint: ## Run linting on all Python code

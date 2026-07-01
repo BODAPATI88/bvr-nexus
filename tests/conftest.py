@@ -107,5 +107,6 @@ bvr_sdk_pkg.check_policy = AsyncMock(return_value=True)
 bvr_sdk_pkg.ai_gateway_call = AsyncMock(return_value={})
 bvr_sdk_pkg.upload_artifact = AsyncMock(return_value="http://minio/artifact")
 bvr_sdk_pkg.get_registry = MagicMock(return_value=MagicMock())
+bvr_sdk_pkg.get_matcher = MagicMock(return_value=MagicMock())
 
 sys.modules["bvr_sdk"] = bvr_sdk_pkg

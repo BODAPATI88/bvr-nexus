@@ -270,7 +270,15 @@ class TestSubscribeFiltering:
         r.xack.assert_awaited_once_with("bvr:events", "bvr-code-analyzer", "1-0")
 
     @pytest.mark.asyncio
-    async def test_handler_failure_does_not_ack(self):
+    async def test_handler_failure_still_acks(self):
+        """
+        Even when the handler raises, the message must be ACK'd.
+        Event status is tracked in postgres; leaving PEL entries indefinitely
+        causes unbounded accumulation on pod restarts.
+        BaseWorker._handle_event catches all exceptions internally so this
+        path covers unexpected lower-level failures (e.g. asyncio.CancelledError
+        reaching the subscribe loop after a SIGTERM).
+        """
         msgs = _stream_message("review.repository", {"repo_url": "http://x"})
         r = _make_redis_mock(xreadgroup_sequences=[msgs])
 
@@ -279,7 +287,7 @@ class TestSubscribeFiltering:
 
         await _run_subscribe_briefly(r, ["review.repository"], failing_handler)
 
-        r.xack.assert_not_awaited()
+        r.xack.assert_awaited_once_with("bvr:events", "bvr-code-analyzer", "1-0")
 
     @pytest.mark.asyncio
     async def test_completion_event_discarded_not_passed_to_handler(self):
