@@ -32,9 +32,16 @@ echo "Creating bvr-nexus-secrets..."
 kubectl create secret generic bvr-nexus-secrets \
   --namespace="$NAMESPACE" \
   --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+  --from-literal=REDIS_PASSWORD="${REDIS_PASSWORD:-}" \
   --from-literal=MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD}" \
+  --from-literal=MINIO_KMS_SECRET_KEY="${MINIO_KMS_SECRET_KEY:-}" \
   --from-literal=VAULT_TOKEN="${VAULT_TOKEN}" \
   --from-literal=BVR_SERVICE_TOKEN="${BVR_SERVICE_TOKEN}" \
+  --from-literal=KESTRA_ADMIN_USERNAME="${KESTRA_ADMIN_USERNAME:-admin}" \
+  --from-literal=KESTRA_ADMIN_PASSWORD="${KESTRA_ADMIN_PASSWORD}" \
+  --from-literal=KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD}" \
+  --from-literal=GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" \
+  --from-literal=TRAEFIK_DASHBOARD_USERS="${TRAEFIK_DASHBOARD_USERS:-}" \
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" \
   --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
   --from-literal=KIMI_API_KEY="${KIMI_API_KEY:-}" \

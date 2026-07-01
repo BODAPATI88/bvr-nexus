@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kestra-pvc
+  namespace: bvr-nexus
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kestra
+  namespace: bvr-nexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kestra
+  template:
+    metadata:
+      labels:
+        app: kestra
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -p 5432 -U bvr -d bvr_nexus; do
+                echo "Waiting for postgres..."
+                sleep 3
+              done
+              echo "Postgres is ready."
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: kestra
+          image: kestra/kestra:v0.18.0
+          imagePullPolicy: IfNotPresent
+          command: ["server", "standalone"]
+          ports:
+            - name: ui
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: KESTRA_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: KESTRA_ADMIN_USERNAME
+            - name: KESTRA_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: KESTRA_ADMIN_PASSWORD
+            - name: KESTRA_CONFIGURATION
+              value: |
+                datasources:
+                  postgres:
+                    url: jdbc:postgresql://postgres:5432/bvr_nexus
+                    driverClassName: org.postgresql.Driver
+                    username: bvr
+                    password: $(POSTGRES_PASSWORD)
+                flyway:
+                  datasources:
+                    postgres:
+                      baseline-on-migrate: true
+                kestra:
+                  repository:
+                    type: postgres
+                  queue:
+                    type: postgres
+                  storage:
+                    type: minio
+                    minio:
+                      endpoint: minio
+                      port: 9000
+                      secure: false
+                      accessKey: bvradmin
+                      secretKey: $(MINIO_ROOT_PASSWORD)
+                      bucket: bvr-artifacts
+                      region: us-east-1
+                  url: http://localhost:8080/
+                  server:
+                    basic-auth:
+                      enabled: true
+                      username: $(KESTRA_ADMIN_USERNAME)
+                      password: $(KESTRA_ADMIN_PASSWORD)
+          volumeMounts:
+            - name: kestra-storage
+              mountPath: /app/storage
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            failureThreshold: 5
+      volumes:
+        - name: kestra-storage
+          persistentVolumeClaim:
+            claimName: kestra-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kestra
+  namespace: bvr-nexus
+spec:
+  selector:
+    app: kestra
+  type: ClusterIP
+  ports:
+    - name: ui
+      port: 8080
+      targetPort: 8080
+    - name: management
+      port: 8081
+      targetPort: 8081

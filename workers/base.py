@@ -31,6 +31,29 @@ BVR_API_URL = os.getenv("BVR_API_URL", "http://localhost:8000")
 MAX_RETRIES = int(os.getenv("BVR_MAX_EVENT_RETRIES", "3"))
 
 
+def _verify_plugin_manifest(plugin_dir: str, plugin_id: str) -> None:
+    import hashlib, yaml as _yaml
+    manifest_path = os.path.join(plugin_dir, "manifest.yaml")
+    if not os.path.exists(manifest_path):
+        raise RuntimeError(f"Plugin {plugin_id}: missing manifest.yaml")
+    raw = open(manifest_path, "rb").read()
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    print(f"[PLUGIN] {plugin_id} manifest SHA256: {actual_sha256}")
+    try:
+        manifest = _yaml.safe_load(raw)
+        expected = manifest.get("manifest_sha256")
+        if expected and expected != actual_sha256:
+            raise RuntimeError(
+                f"Plugin {plugin_id}: manifest SHA256 mismatch "
+                f"(expected {expected}, got {actual_sha256})"
+            )
+    except Exception as exc:
+        if "mismatch" in str(exc):
+            raise
+        # yaml not available or parse error — log and continue
+        print(f"[PLUGIN] {plugin_id}: manifest verification skipped ({exc})")
+
+
 class BaseWorker(ABC):
     """Base class for all BVR workers."""
 

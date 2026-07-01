@@ -39,3 +39,7 @@ exclude = ["venv/", "tests/"]
 [tool.bandit]
 exclude_dirs = ["tests", "venv"]
 skips = ["B101", "B311"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
