@@ -67,6 +67,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-bvradmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # SSE-S3 encryption at rest (H8). Format: <key-name>:<base64-32-byte-key>
+      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY}
     ports:
       - "9000:9000"
     volumes:
@@ -87,6 +89,26 @@ services:
     networks:
       - bvr-network
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: bvr-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    networks:
+      - bvr-network
+
   minio-init:
     image: minio/mc:latest
     container_name: bvr-minio-init
@@ -101,7 +123,9 @@ services:
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
       mc mb local/bvr-artifacts --ignore-existing;
       mc mb local/bvr-logs --ignore-existing;
-      echo 'MinIO initialized.'
+      mc encrypt set sse-s3 local/bvr-artifacts;
+      mc encrypt set sse-s3 local/bvr-logs;
+      echo 'MinIO initialized with SSE-S3 encryption.'
       "
     networks:
       - bvr-network
@@ -526,12 +550,17 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.filename=/etc/traefik/traefik.yml"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.traefik.address=:8080"
+      - "--api.dashboard=true"
       - "--ping=true"
+      - "--ping.entrypoint=traefik"
     ports:
       - "80:80"
       - "443:443"
+      - "8082:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./gateway/traefik.prod.yml:/etc/traefik/traefik.yml:ro

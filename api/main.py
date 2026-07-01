@@ -21,7 +21,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from api.middleware import ContentTypeMiddleware, PayloadSizeMiddleware
 from api.services import EventService, RegistryService
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -173,9 +175,6 @@ CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 # Lifespan — pool tuning + service wiring
 # ---------------------------------------------------------------------------
 
-_MAX_PAYLOAD_BYTES = int(os.getenv("BVR_MAX_PAYLOAD_BYTES", str(1 * 1024 * 1024)))  # 1 MB
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.redis = await aioredis.from_url(
@@ -214,34 +213,8 @@ app = FastAPI(
 # Middleware
 # ---------------------------------------------------------------------------
 
-
-class PayloadSizeMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose declared Content-Length exceeds BVR_MAX_PAYLOAD_BYTES (1 MB)."""
-
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > _MAX_PAYLOAD_BYTES:
-            return Response(
-                content='{"detail":"Request body too large"}',
-                status_code=413,
-                media_type="application/json",
-            )
-        return await call_next(request)
-
-
-class ContentTypeMiddleware(BaseHTTPMiddleware):
-    """Require application/json Content-Type on mutating requests."""
-
-    async def dispatch(self, request: Request, call_next):
-        if request.method in ("POST", "PUT", "PATCH"):
-            ct = request.headers.get("content-type", "")
-            if not ct.startswith("application/json"):
-                return Response(
-                    content='{"detail":"Content-Type must be application/json"}',
-                    status_code=415,
-                    media_type="application/json",
-                )
-        return await call_next(request)
+# PayloadSizeMiddleware and ContentTypeMiddleware live in api.middleware so
+# they can be tested in isolation without importing the full app.
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -936,6 +909,11 @@ async def update_provider_health(provider_id: str, healthy: bool):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "bvr-api", "version": "2.0.0"}
+
+
+@app.get("/metrics")
+async def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/")

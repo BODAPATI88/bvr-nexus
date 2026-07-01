@@ -7,14 +7,25 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
+  # Kestra management port (Micronaut) exposes Prometheus on :8081/prometheus
   - job_name: 'kestra'
     static_configs:
-      - targets: ['kestra:8080']
-    metrics_path: '/api/v1/metrics'
+      - targets: ['kestra:8081']
+    metrics_path: '/prometheus'
 
-  - job_name: 'bvr-cli'
+  - job_name: 'bvr-api'
     static_configs:
-      - targets: ['bvr-cli-api:8000']
+      - targets: ['bvr-api:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'ai-gateway'
+    static_configs:
+      - targets: ['ai-gateway:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
     metrics_path: '/metrics'
 
   - job_name: 'opa'
