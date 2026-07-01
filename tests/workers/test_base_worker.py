@@ -185,6 +185,147 @@ class TestHandleEventFailure:
 
 
 # ---------------------------------------------------------------------------
+# _handle_event — DLQ tracking
+# ---------------------------------------------------------------------------
+
+class TestDlqTracking:
+    @pytest.mark.asyncio
+    async def test_failure_counter_incremented_on_exception(self):
+        event = _make_event()
+        track_mock = AsyncMock(return_value=1)
+        clear_mock = AsyncMock()
+        dlq_mock = AsyncMock()
+        worker = _ConcreteWorker.with_result(side_effect=RuntimeError("boom"))
+
+        with patch("workers.base.check_policy", AsyncMock(return_value=True)), \
+             patch("workers.base.emit_event", AsyncMock(return_value=MagicMock())), \
+             patch("workers.base.track_failure", track_mock), \
+             patch("workers.base.clear_failure_counter", clear_mock), \
+             patch("workers.base.send_to_dlq", dlq_mock), \
+             patch.object(worker, "_post_result", AsyncMock()):
+            await worker._handle_event(event)
+
+        track_mock.assert_awaited_once()
+        clear_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_failure_counter_cleared_on_success(self):
+        event = _make_event()
+        clear_mock = AsyncMock()
+        track_mock = AsyncMock(return_value=0)
+        worker = _ConcreteWorker.with_result(result={"score": 80})
+
+        with patch("workers.base.check_policy", AsyncMock(return_value=True)), \
+             patch("workers.base.emit_event", AsyncMock(return_value=MagicMock())), \
+             patch("workers.base.track_failure", track_mock), \
+             patch("workers.base.clear_failure_counter", clear_mock), \
+             patch("workers.base.send_to_dlq", AsyncMock()), \
+             patch.object(worker, "_post_result", AsyncMock()):
+            await worker._handle_event(event)
+
+        clear_mock.assert_awaited_once()
+        track_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_send_to_dlq_called_when_max_retries_reached(self):
+        from workers.base import MAX_RETRIES
+        event = _make_event()
+        dlq_mock = AsyncMock()
+        # track_failure returns MAX_RETRIES → triggers DLQ
+        track_mock = AsyncMock(return_value=MAX_RETRIES)
+        worker = _ConcreteWorker.with_result(side_effect=ValueError("persistent error"))
+
+        with patch("workers.base.check_policy", AsyncMock(return_value=True)), \
+             patch("workers.base.emit_event", AsyncMock(return_value=MagicMock())), \
+             patch("workers.base.track_failure", track_mock), \
+             patch("workers.base.clear_failure_counter", AsyncMock()), \
+             patch("workers.base.send_to_dlq", dlq_mock), \
+             patch.object(worker, "_post_result", AsyncMock()):
+            await worker._handle_event(event)
+
+        dlq_mock.assert_awaited_once()
+        args = dlq_mock.call_args[0]
+        assert args[0] == event  # first arg is the event
+        assert "persistent error" in args[2]  # third arg is error string
+
+    @pytest.mark.asyncio
+    async def test_dlq_not_called_below_max_retries(self):
+        from workers.base import MAX_RETRIES
+        event = _make_event()
+        dlq_mock = AsyncMock()
+        # Returns one below threshold
+        track_mock = AsyncMock(return_value=MAX_RETRIES - 1)
+        worker = _ConcreteWorker.with_result(side_effect=ValueError("transient"))
+
+        with patch("workers.base.check_policy", AsyncMock(return_value=True)), \
+             patch("workers.base.emit_event", AsyncMock(return_value=MagicMock())), \
+             patch("workers.base.track_failure", track_mock), \
+             patch("workers.base.clear_failure_counter", AsyncMock()), \
+             patch("workers.base.send_to_dlq", dlq_mock), \
+             patch.object(worker, "_post_result", AsyncMock()):
+            await worker._handle_event(event)
+
+        dlq_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_consumer_group_derived_from_worker_id(self):
+        event = _make_event()
+        track_mock = AsyncMock(return_value=1)
+        worker = _ConcreteWorker.with_result(side_effect=ValueError("fail"))
+
+        with patch("workers.base.check_policy", AsyncMock(return_value=True)), \
+             patch("workers.base.emit_event", AsyncMock(return_value=MagicMock())), \
+             patch("workers.base.track_failure", track_mock), \
+             patch("workers.base.clear_failure_counter", AsyncMock()), \
+             patch("workers.base.send_to_dlq", AsyncMock()), \
+             patch.object(worker, "_post_result", AsyncMock()):
+            await worker._handle_event(event)
+
+        args = track_mock.call_args[0]
+        assert args[1] == f"bvr-{worker.worker_id}"
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+
+class TestGracefulShutdown:
+    @pytest.mark.asyncio
+    async def test_start_passes_shutdown_event_to_subscribe(self):
+        """subscribe() must receive a shutdown_event keyword argument."""
+        import asyncio as _asyncio
+        from unittest.mock import AsyncMock as _AM, patch as _patch
+
+        worker = _ConcreteWorker()
+        subscribe_mock = _AM()
+        register_mock = _AM()
+
+        with _patch("workers.base.subscribe", subscribe_mock), \
+             _patch("workers.base.register_worker", register_mock):
+            await worker.start()
+
+        subscribe_mock.assert_awaited_once()
+        kwargs = subscribe_mock.call_args[1]
+        assert "shutdown_event" in kwargs
+        assert isinstance(kwargs["shutdown_event"], _asyncio.Event)
+
+    @pytest.mark.asyncio
+    async def test_start_registers_worker_before_subscribing(self):
+        import asyncio as _asyncio
+
+        worker = _ConcreteWorker()
+        call_order = []
+        register_mock = AsyncMock(side_effect=lambda **kw: call_order.append("register"))
+        subscribe_mock = AsyncMock(side_effect=lambda **kw: call_order.append("subscribe"))
+
+        with patch("workers.base.subscribe", subscribe_mock), \
+             patch("workers.base.register_worker", register_mock):
+            await worker.start()
+
+        assert call_order == ["register", "subscribe"]
+
+
+# ---------------------------------------------------------------------------
 # _post_result — error isolation
 # ---------------------------------------------------------------------------
 

@@ -4,21 +4,32 @@ All workers inherit from this.
 """
 
 import asyncio
-from datetime import datetime, timezone
-import httpx
 import os
 import signal
-import sys
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from datetime import datetime, timezone
+from typing import Any, Dict, List
+
+import httpx
+
 from bvr_sdk import (
-    EventEnvelope, emit_event, subscribe,
-    trace_span, register_worker, check_policy,
-    ai_gateway_call, upload_artifact,
-    get_registry
+    EventEnvelope,
+    ai_gateway_call,
+    check_policy,
+    clear_failure_counter,
+    emit_event,
+    get_registry,
+    register_worker,
+    send_to_dlq,
+    subscribe,
+    trace_span,
+    track_failure,
+    upload_artifact,
 )
 
 BVR_API_URL = os.getenv("BVR_API_URL", "http://localhost:8000")
+MAX_RETRIES = int(os.getenv("BVR_MAX_EVENT_RETRIES", "3"))
+
 
 class BaseWorker(ABC):
     """Base class for all BVR workers."""
@@ -30,70 +41,86 @@ class BaseWorker(ABC):
     def __init__(self):
         self.plugin_cache = {}
 
-    def _setup_signal_handlers(self):
-        """Setup graceful shutdown on SIGTERM/SIGINT."""
-        def signal_handler(signum, frame):
-            print(f"\n[WORKER] Received signal {signum}, shutting down gracefully...")
-            self._shutting_down = True
-            sys.exit(0)
-
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-
     async def start(self):
-        self._setup_signal_handlers()
-        self._shutting_down = False
-        """Register and start consuming events."""
+        """Register and start consuming events with graceful shutdown."""
+        shutdown_event = asyncio.Event()
+
+        # asyncio-safe signal handling — does not call sys.exit()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: (
+                    print(f"\n[WORKER] Received signal {s.name}, shutting down gracefully..."),
+                    shutdown_event.set(),
+                ),
+            )
+
         await register_worker(
             worker_id=self.worker_id,
             capabilities=self.capabilities,
             health_endpoint=f"/health/{self.worker_id}",
-            version=self.version
+            version=self.version,
         )
         print(f"[WORKER] {self.worker_id} registered and ready")
 
-        # Subscribe to events — one group per worker type so every event
-        # reaches every worker type independently (fanout), with filtering
-        # inside subscribe() discarding non-matching event types cheaply.
+        # One consumer group per worker type: every event type reaches every
+        # worker type independently (fanout), filtered cheaply inside subscribe().
         await subscribe(
             event_types=self.capabilities,
             consumer_group=f"bvr-{self.worker_id}",
             consumer_name=self.worker_id,
-            handler=self._handle_event
+            handler=self._handle_event,
+            shutdown_event=shutdown_event,
         )
 
     async def _handle_event(self, event: EventEnvelope):
-        """Wrapper around handle() with telemetry and error handling."""
+        """Wrapper around handle() with telemetry, error handling, and DLQ tracking."""
+        consumer_group = f"bvr-{self.worker_id}"
         try:
-            await check_policy("bvr.allow", {
-                "action": event.event_type,
-                "user": event.user_id,
-                "target": str(event.payload)
-            })
+            await check_policy(
+                "bvr.allow",
+                {
+                    "action": event.event_type,
+                    "user": event.user_id,
+                    "target": str(event.payload),
+                },
+            )
 
             result = await self.handle(event)
 
-            # POST result back to API so event status transitions to completed
             artifact_url = result.pop("artifact_url", None)
             artifact_urls = [artifact_url] if artifact_url else None
             await self._post_result(event.event_id, "completed", result, artifact_urls)
 
-            # Emit completion event to stream (for Kestra webhook subscribers)
             await emit_event(
                 event_type=f"{event.event_type}.completed",
                 payload=result,
-                correlation_id=event.correlation_id
+                correlation_id=event.correlation_id,
             )
+
+            # Clear the failure counter on a successful run
+            await clear_failure_counter(event.event_id, consumer_group)
+
         except Exception as e:
-            print(f"[ERROR] Worker {self.worker_id} failed: {e}")
+            print(f"[ERROR] Worker {self.worker_id} failed on {event.event_id}: {e}")
             await self._post_result(event.event_id, "failed", {"error": str(e)})
+
+            # Track consecutive failures; move to DLQ after MAX_RETRIES
+            count = await track_failure(event.event_id, consumer_group)
+            if count >= MAX_RETRIES:
+                print(
+                    f"[DLQ] Event {event.event_id} exceeded {MAX_RETRIES} retries,"
+                    f" sending to DLQ"
+                )
+                await send_to_dlq(event, consumer_group, str(e))
 
     async def _post_result(
         self,
         event_id: str,
         status: str,
         result: Dict[str, Any],
-        artifact_urls: List[str] = None
+        artifact_urls: List[str] = None,
     ):
         """POST the execution result back to the BVR API."""
         try:
@@ -107,7 +134,7 @@ class BaseWorker(ABC):
                         "artifact_urls": artifact_urls,
                         "created_at": datetime.now(timezone.utc).isoformat(),
                     },
-                    timeout=10.0
+                    timeout=10.0,
                 )
         except Exception as e:
             print(f"[WARN] Failed to post result for {event_id}: {e}", flush=True)

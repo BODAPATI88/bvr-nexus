@@ -55,6 +55,52 @@ if "opentelemetry.trace" in sys.modules:
 if "jwt" not in sys.modules:
     _stub("jwt", decode=MagicMock(), ExpiredSignatureError=Exception, InvalidTokenError=Exception)
 
+
+# Stub api.services before loading api.main (which imports them at module level)
+import types as _types
+
+_services_pkg = _types.ModuleType("api.services")
+_services_mod_events = _types.ModuleType("api.services.events")
+_services_mod_registry = _types.ModuleType("api.services.registry")
+
+class _FakeEventService:
+    """Thin service stub that delegates through the mock pool so assertions on
+    conn.execute / conn.fetchrow still work in existing tests."""
+    def __init__(self, pool): self._pool = pool
+
+    async def store_event(self, **kw):
+        async with self._pool.acquire() as conn:
+            await conn.execute("INSERT -- stub", *[])
+
+    async def get_result(self, event_id):
+        async with self._pool.acquire() as conn:
+            return await conn.fetchrow("SELECT -- stub", event_id)
+
+    async def post_result(self, **kw):
+        async with self._pool.acquire() as conn:
+            await conn.execute("UPDATE -- stub", *[])
+
+    async def post_webhook_result(self, **kw):
+        async with self._pool.acquire() as conn:
+            await conn.execute("UPDATE webhook -- stub", *[])
+
+
+class _FakeRegistryService:
+    def __init__(self, pool): self._pool = pool
+    async def register_worker(self, **kw): pass
+    async def list_workers(self): return []
+    async def register_integration(self, **kw): pass
+    async def list_integrations(self): return []
+
+_services_mod_events.EventService = _FakeEventService
+_services_mod_registry.RegistryService = _FakeRegistryService
+_services_pkg.EventService = _FakeEventService
+_services_pkg.RegistryService = _FakeRegistryService
+sys.modules["api"] = _types.ModuleType("api")
+sys.modules["api.services"] = _services_pkg
+sys.modules["api.services.events"] = _services_mod_events
+sys.modules["api.services.registry"] = _services_mod_registry
+
 _api_spec = importlib.util.spec_from_file_location("api.main", str(_API_FILE))
 _api_mod = importlib.util.module_from_spec(_api_spec)
 sys.modules["api.main"] = _api_mod
@@ -114,6 +160,8 @@ async def client():
 
     app.state.db = pool
     app.state.redis = redis
+    app.state.event_service = _FakeEventService(pool)
+    app.state.registry_service = _FakeRegistryService(pool)
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"

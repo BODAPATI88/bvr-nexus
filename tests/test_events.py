@@ -48,7 +48,8 @@ def _make_redis_mock(*, xreadgroup_sequences=None):
     r.xgroup_create = AsyncMock(return_value=True)
     r.xreadgroup = AsyncMock(side_effect=_xreadgroup)
     r.xack = AsyncMock(return_value=1)
-    r.close = AsyncMock()
+    r.set = AsyncMock(return_value=True)   # idempotency NX set
+    r.aclose = AsyncMock()                  # redis-py 5.x uses aclose()
     return r
 
 
@@ -107,7 +108,7 @@ class TestEmitEventStream:
         with patch("bvr_sdk.events.get_redis", return_value=r):
             await emit_event("review.repository", {}, "corr-1")
 
-        r.close.assert_awaited_once()
+        r.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_redis_closed_even_on_xadd_failure(self):
@@ -117,7 +118,7 @@ class TestEmitEventStream:
             with pytest.raises(RuntimeError, match="stream write failed"):
                 await emit_event("review.repository", {}, "corr-1")
 
-        r.close.assert_awaited_once()
+        r.aclose.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
