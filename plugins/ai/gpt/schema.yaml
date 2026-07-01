@@ -1,0 +1,36 @@
+input:
+  type: object
+  required: [prompt]
+  properties:
+    prompt:
+      type: string
+      description: "The prompt to send to GPT"
+    max_tokens:
+      type: integer
+      default: 4000
+      minimum: 1
+      maximum: 128000
+    temperature:
+      type: number
+      default: 0.7
+      minimum: 0.0
+      maximum: 1.0
+    system_prompt:
+      type: string
+      description: "Optional system prompt"
+
+output:
+  type: object
+  properties:
+    text:
+      type: string
+      description: "GPT's response"
+    tokens_input:
+      type: integer
+    tokens_output:
+      type: integer
+    cost_usd:
+      type: number
+    model:
+      type: string
+      default: "gpt-4o"
