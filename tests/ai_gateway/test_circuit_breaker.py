@@ -55,6 +55,9 @@ def _load_circuit_breaker():
     fastapi_stub.FastAPI = lambda **kw: None  # type: ignore[attr-defined]
     fastapi_stub.HTTPException = Exception  # type: ignore[attr-defined]
     fastapi_stub.Response = object  # type: ignore[attr-defined]
+    fastapi_responses_stub = types.ModuleType("fastapi.responses")
+    fastapi_responses_stub.StreamingResponse = object  # type: ignore[attr-defined]
+    stub_modules["fastapi.responses"] = fastapi_responses_stub
 
     pydantic_stub = stub_modules["pydantic"]
     pydantic_stub.BaseModel = object  # type: ignore[attr-defined]
