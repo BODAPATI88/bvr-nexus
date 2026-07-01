@@ -6,6 +6,57 @@ This file is the authoritative guide for working in this repository. Read it bef
 
 ---
 
+## Platform Stability Policy (effective v2.0.0)
+
+**The platform core is frozen.** v2.0.0 is General Availability. All future work falls into one of three tracks:
+
+### Track 1 — Platform Maintenance (`release/v2.0.x`)
+Bug fixes only. No new features, no new dependencies, no API changes.
+
+**Allowed on `release/v2.0.x`:**
+- Fixing confirmed bugs in existing behaviour
+- Security patches
+- Test additions that improve coverage of existing code
+- Documentation corrections
+
+**Not allowed on `release/v2.0.x`:**
+- New endpoints, new service modules, new SDK functions
+- New plugins, new workers, new Kestra workflows
+- Dependency version bumps (unless security-driven)
+- Refactors that change public interfaces
+
+**Frozen files (do not modify except for bugs):**
+- `api/main.py`, `api/services/`
+- `workers/base.py`, `workers/research_worker.py`, `workers/review_worker.py`, `workers/achieve_worker.py`
+- `bvr-sdk/bvr_sdk/`
+- `ai-gateway/main.py`
+- `governance/rego/`
+- `contracts/constitution.yaml` (capabilities section)
+- `api/init.sql`
+
+### Track 2 — Product Integrations (`feature/integration-*`)
+New business applications onboarded onto Nexus. Each integration is self-contained:
+- New plugin in `plugins/<category>/<name>/` with full manifest
+- New worker in `workers/`
+- New Kestra workflow in `kestra-workflows/`
+- New capability block in `contracts/constitution.yaml`
+- No changes to frozen files
+
+**First integration:** Pharmabridge (`feature/integration-pharmabridge`) — pending resume.
+
+### Track 3 — Operations & Observability (`feature/ops-*`)
+Operations Console, CEO Dashboard, Grafana dashboards, alerting rules, runbook automation.
+These are additive — new services or new config files only.
+
+### Release Versioning
+| Version | Meaning |
+|---------|---------|
+| `v2.0.x` | Bug fix — no API or schema change |
+| `v2.x.0` | New integration or ops feature — additive only |
+| `v3.0.0` | Breaking change — requires migration guide |
+
+---
+
 ## Table of Contents
 
 1. [Repository Status](#repository-status)

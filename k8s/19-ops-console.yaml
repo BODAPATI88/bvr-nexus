@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-console
+  namespace: bvr-nexus
+  labels:
+    app: ops-console
+    tier: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ops-console
+  template:
+    metadata:
+      labels:
+        app: ops-console
+    spec:
+      containers:
+        - name: ops-console
+          image: bvr-nexus/ops-console:2.0.0
+          ports:
+            - containerPort: 8000
+          env:
+            - name: BVR_API_URL
+              value: "http://bvr-api:8000"
+            - name: AI_GATEWAY_URL
+              value: "http://ai-gateway:8000"
+            - name: PROMETHEUS_URL
+              value: "http://prometheus:9090"
+            - name: BVR_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: BVR_SERVICE_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-console
+  namespace: bvr-nexus
+spec:
+  selector:
+    app: ops-console
+  ports:
+    - name: http
+      port: 8002
+      targetPort: 8000
+  type: ClusterIP

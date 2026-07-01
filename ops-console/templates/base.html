@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="30">
+  <title>{% block title %}BVR Nexus{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .status-ok   { @apply text-emerald-600 font-semibold; }
+    .status-warn { @apply text-amber-500  font-semibold; }
+    .status-err  { @apply text-red-600    font-semibold; }
+    .status-unknown { @apply text-slate-400 font-semibold; }
+
+    .badge-ok      { background:#d1fae5; color:#065f46; }
+    .badge-warn    { background:#fef3c7; color:#92400e; }
+    .badge-err     { background:#fee2e2; color:#991b1b; }
+    .badge-unknown { background:#f1f5f9; color:#64748b; }
+
+    .dot-ok      { background:#10b981; }
+    .dot-warn    { background:#f59e0b; }
+    .dot-err     { background:#ef4444; }
+    .dot-unknown { background:#94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+
+<!-- ── Navigation ── -->
+<nav class="bg-slate-900 text-white shadow-md">
+  <div class="max-w-7xl mx-auto px-6 py-0 flex items-stretch">
+    <!-- Logo / brand -->
+    <div class="flex items-center gap-3 pr-8 border-r border-slate-700 py-3">
+      <div class="w-7 h-7 rounded-md bg-blue-500 flex items-center justify-center text-white text-xs font-bold">BVR</div>
+      <div>
+        <span class="font-bold tracking-tight">Nexus</span>
+        <span class="text-slate-500 text-xs ml-2">v{{ version }}</span>
+      </div>
+    </div>
+    <!-- Nav links -->
+    <div class="flex ml-2">
+      <a href="/"
+         class="px-5 py-4 text-sm font-medium transition-colors
+                {% if page == 'ops' %}bg-slate-800 text-white{% else %}text-slate-400 hover:text-white hover:bg-slate-800{% endif %}">
+        Operations
+      </a>
+      <a href="/ceo"
+         class="px-5 py-4 text-sm font-medium transition-colors
+                {% if page == 'ceo' %}bg-slate-800 text-white{% else %}text-slate-400 hover:text-white hover:bg-slate-800{% endif %}">
+        Executive
+      </a>
+    </div>
+    <!-- Refresh stamp -->
+    <div class="ml-auto flex items-center text-xs text-slate-500 py-3">
+      ↻ auto-refresh 30s &nbsp;·&nbsp; {{ refreshed }}
+    </div>
+  </div>
+</nav>
+
+<!-- ── Page content ── -->
+<main class="max-w-7xl mx-auto px-6 py-8">
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>
