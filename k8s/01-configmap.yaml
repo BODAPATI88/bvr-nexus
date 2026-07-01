@@ -150,15 +150,10 @@ data:
         input.estimated_tokens <= max_tokens_per_execution
     }
 
-    allowed_providers := ["claude", "gpt", "kimi", "ollama"]
+    allowed_providers := ["claude", "gpt", "kimi"]
 
     provider_allowed if {
         input.provider in allowed_providers
-    }
-
-    require_local_for_pii if {
-        input.contains_pii
-        input.provider == "ollama"
     }
   data_residency.rego: |
     package bvr.data

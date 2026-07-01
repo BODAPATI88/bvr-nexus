@@ -261,7 +261,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       KIMI_API_KEY: ${KIMI_API_KEY:-}
-      OLLAMA_URL: http://ollama:11434
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
       BVR_CONSTITUTION: /app/contracts/constitution.yaml
@@ -345,31 +344,8 @@ services:
     networks:
       - bvr-network
 
-  # ───────────────────────────────────────────
-  # L3. AI / LLM (Local + Gateway)
-  # ───────────────────────────────────────────
-  ollama:
-    image: ollama/ollama:0.1.48
-    container_name: bvr-ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    command: serve
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/11434 2>/dev/null' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    networks:
-      - bvr-network
+  # Ollama removed — last-resort LLM fallback not needed when Claude/GPT/Kimi
+  # API keys are configured. Add back with a Docker Compose profile if needed.
 
   # ───────────────────────────────────────────
   # L5. GOVERNANCE LAYER
@@ -587,7 +563,6 @@ volumes:
   redis_data:
   minio_data:
   kestra_data:
-  ollama_data:
   vault_data:
   prometheus_data:
   grafana_data:
