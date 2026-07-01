@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bvr-db-migrate
+  namespace: bvr-nexus
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: pgvector/pgvector:pg16
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGHOST
+              value: postgres
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: bvr
+            - name: PGDATABASE
+              value: bvr_nexus
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Waiting for postgres to be ready..."
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE"; do
+                sleep 3
+              done
+              echo "Running schema migration..."
+              psql \
+                -c "CREATE TABLE IF NOT EXISTS events (event_id UUID PRIMARY KEY, event_type TEXT NOT NULL, payload JSONB NOT NULL, correlation_id TEXT NOT NULL, source TEXT NOT NULL, timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(), priority TEXT DEFAULT 'normal', user_id TEXT, status TEXT DEFAULT 'pending')" \
+                -c "CREATE TABLE IF NOT EXISTS event_results (event_id UUID PRIMARY KEY REFERENCES events(event_id), result JSONB, artifact_urls JSONB, metrics JSONB, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())" \
+                -c "CREATE TABLE IF NOT EXISTS workers (worker_id TEXT PRIMARY KEY, capabilities TEXT[] NOT NULL, health_endpoint TEXT NOT NULL, version TEXT NOT NULL, last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW(), status TEXT DEFAULT 'active')" \
+                -c "CREATE TABLE IF NOT EXISTS integrations (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, version TEXT NOT NULL, capabilities TEXT[] NOT NULL, status TEXT DEFAULT 'active', manifest JSONB)" \
+                -c "CREATE TABLE IF NOT EXISTS models (id TEXT PRIMARY KEY, provider TEXT NOT NULL, model_name TEXT NOT NULL, capabilities TEXT[] NOT NULL, priority INT NOT NULL, fallback TEXT, cost_per_1k_input FLOAT NOT NULL, cost_per_1k_output FLOAT NOT NULL)" \
+                -c "CREATE TABLE IF NOT EXISTS prompts (id TEXT PRIMARY KEY, version TEXT NOT NULL, template TEXT NOT NULL, variables TEXT[] NOT NULL, model_preference TEXT)" \
+                -c "CREATE TABLE IF NOT EXISTS policies (id TEXT PRIMARY KEY, rego_path TEXT NOT NULL, description TEXT NOT NULL, applies_to TEXT[] NOT NULL)" \
+                -c "CREATE TABLE IF NOT EXISTS outcomes (goal_id TEXT PRIMARY KEY, description TEXT NOT NULL, metric TEXT NOT NULL, target FLOAT NOT NULL, unit TEXT NOT NULL, current FLOAT, workflow_id TEXT NOT NULL, status TEXT DEFAULT 'on_track')" \
+                -c "CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id)" \
+                -c "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)" \
+                -c "CREATE INDEX IF NOT EXISTS idx_events_status ON events(status)"
+              echo "Migration complete."
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

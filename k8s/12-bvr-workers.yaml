@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bvr-workers
+  namespace: bvr-nexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bvr-workers
+  template:
+    metadata:
+      labels:
+        app: bvr-workers
+    spec:
+      initContainers:
+        - name: wait-for-api
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until wget -qO- http://bvr-api:8000/health > /dev/null 2>&1; do
+                echo "Waiting for bvr-api..."
+                sleep 5
+              done
+              echo "bvr-api is ready."
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+      containers:
+        - name: bvr-workers
+          image: bodapati88/bvr-workers:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://bvr:$(POSTGRES_PASSWORD)@postgres:5432/bvr_nexus"
+            - name: REDIS_URL
+              value: "redis://redis:6379"
+            - name: BVR_API_URL
+              value: "http://bvr-api:8000"
+            - name: AI_GATEWAY_URL
+              value: "http://ai-gateway:8000"
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: MINIO_ENDPOINT
+              value: "http://minio:9000"
+            - name: MINIO_ACCESS_KEY
+              value: "bvradmin"
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: BVR_CONSTITUTION
+              value: "/app/contracts/constitution.yaml"
+            - name: BVR_PLUGINS_DIR
+              value: "/app/plugins"
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: SLACK_WEBHOOK_URL
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: GITHUB_TOKEN
+                  optional: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 15

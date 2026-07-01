@@ -105,16 +105,21 @@ async def subscribe(
                             correlation_id=fields["correlation_id"],
                             priority=fields.get("priority", "normal"),
                         )
-                        # Discard events not owned by this consumer group
-                        if event.event_type not in event_types:
+                        # Discard terminal notification events and events not owned by this group
+                        if (event.event_type not in event_types
+                                or event.event_type.endswith((".completed", ".failed"))):
                             await r.xack("bvr:events", consumer_group, msg_id)
                             continue
                         try:
                             await handler(event)
-                            await r.xack("bvr:events", consumer_group, msg_id)
                         except Exception as e:
-                            # Log error, don't ack — message will be redelivered
                             print(f"Error processing event {event.event_id}: {e}")
+                        finally:
+                            # Always ACK — event status is tracked in postgres,
+                            # not in the Redis PEL. Leaving messages unACK'd causes
+                            # permanent PEL buildup since BaseWorker._handle_event
+                            # already catches all errors internally.
+                            await r.xack("bvr:events", consumer_group, msg_id)
     finally:
         await r.close()
 

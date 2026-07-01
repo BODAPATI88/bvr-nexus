@@ -1,0 +1,38 @@
+# ArgoCD Application for BVR Nexus
+# Apply manually (once) to the cluster — this file is not managed by ArgoCD itself:
+#   kubectl apply -f argocd/bvr-nexus-app.yaml
+#
+# Prerequisites (run before applying this):
+#   1. bash k8s/create-secrets.sh          — creates bvr-nexus-secrets
+#   2. kubectl apply -f k8s/00-namespace.yaml
+#   3. (Optional) Add repo credentials to ArgoCD if the repo is private:
+#      argocd repo add https://github.com/bodapati88/bvr-nexus --username <user> --password <pat>
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bvr-nexus
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/bodapati88/bvr-nexus
+    targetRevision: claude/bvr-nexus-architecture-v8inv5
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: bvr-nexus
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  ignoreDifferences:
+    # Job completedAt timestamp changes on every sync; ignore to avoid spurious drift
+    - group: batch
+      kind: Job
+      jsonPointers:
+        - /spec/template/metadata/labels

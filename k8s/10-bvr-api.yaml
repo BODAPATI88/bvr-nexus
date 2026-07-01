@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bvr-api
+  namespace: bvr-nexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bvr-api
+  template:
+    metadata:
+      labels:
+        app: bvr-api
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -p 5432 -U bvr -d bvr_nexus; do
+                echo "Waiting for postgres..."
+                sleep 3
+              done
+              echo "Postgres is ready."
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: bvr-api
+          image: bodapati88/bvr-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://bvr:$(POSTGRES_PASSWORD)@postgres:5432/bvr_nexus"
+            - name: REDIS_URL
+              value: "redis://redis:6379"
+            - name: MINIO_ENDPOINT
+              value: "http://minio:9000"
+            - name: MINIO_ACCESS_KEY
+              value: "bvradmin"
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: VAULT_URL
+              value: "http://vault:8200"
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: VAULT_TOKEN
+            - name: AI_GATEWAY_URL
+              value: "http://ai-gateway:8000"
+            - name: BVR_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: BVR_SERVICE_TOKEN
+          volumeMounts:
+            - name: contracts
+              mountPath: /app/contracts
+              readOnly: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 40
+            periodSeconds: 15
+      volumes:
+        - name: contracts
+          configMap:
+            name: bvr-contracts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bvr-api
+  namespace: bvr-nexus
+spec:
+  selector:
+    app: bvr-api
+  ports:
+    - port: 8000
+      targetPort: 8000
