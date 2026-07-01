@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-metrics
+  namespace: bvr-nexus
+  labels:
+    app: public-metrics
+    tier: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: public-metrics
+  template:
+    metadata:
+      labels:
+        app: public-metrics
+    spec:
+      containers:
+        - name: public-metrics
+          image: docker.io/bvr-nexus/public-metrics:1.0.0
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8002
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-metrics
+  namespace: bvr-nexus
+spec:
+  selector:
+    app: public-metrics
+  ports:
+    - name: http
+      port: 8002
+      targetPort: 8002
+  type: ClusterIP
