@@ -7,7 +7,7 @@ echo "==========================================="
 
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "❌ Docker required"; exit 1; }
-command -v docker-compose >/dev/null 2>&1 || { echo "❌ Docker Compose required"; exit 1; }
+docker compose version >/dev/null 2>&1 || { echo "❌ Docker Compose required"; exit 1; }
 
 # ── SECRET GENERATION ──
 ENV_FILE=".env"
