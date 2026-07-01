@@ -36,6 +36,7 @@ update_secret() {
 
 echo "🔐 Generating secrets..."
 update_secret "POSTGRES_PASSWORD" "$(generate_secret)"
+update_secret "REDIS_PASSWORD" "$(generate_secret)"
 update_secret "MINIO_ROOT_PASSWORD" "$(generate_secret)"
 update_secret "KESTRA_DB_PASSWORD" "$(generate_secret)"
 update_secret "VAULT_DEV_ROOT_TOKEN_ID" "$(generate_secret)"
