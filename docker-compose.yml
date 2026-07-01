@@ -23,20 +23,38 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - bvr-network
 
   redis:
     image: redis:7.2.4-alpine
     container_name: bvr-redis
+    env_file:
+      - .env
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     networks:
       - bvr-network
 
@@ -58,6 +76,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     networks:
       - bvr-network
 
@@ -154,7 +180,7 @@ services:
     container_name: bvr-api
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-bvradmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
@@ -164,6 +190,7 @@ services:
       KESTRA_URL: http://kestra:8080
       AI_GATEWAY_URL: http://ai-gateway:8000
       BVR_SERVICE_TOKEN: ${BVR_SERVICE_TOKEN}
+      API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-http://localhost:3000}
     ports:
       - "8000:8000"
     volumes:
@@ -184,6 +211,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - bvr-network
 
@@ -201,7 +236,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       KIMI_API_KEY: ${KIMI_API_KEY:-}
       OLLAMA_URL: http://ollama:11434
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
       BVR_CONSTITUTION: /app/contracts/constitution.yaml
       BVR_PLUGINS_DIR: /app/plugins
@@ -221,6 +256,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     networks:
       - bvr-network
 
@@ -235,7 +278,7 @@ services:
     container_name: bvr-workers
     environment:
       BVR_API_URL: http://bvr-api:8000
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bvr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bvr_nexus}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-bvradmin}
@@ -291,6 +334,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
     networks:
       - bvr-network
 
@@ -303,6 +354,14 @@ services:
     command: run --server --addr :8181 --log-level info /policies
     volumes:
       - ./governance/rego:/policies:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     networks:
       - bvr-network
 
@@ -322,6 +381,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     networks:
       - bvr-network
 
@@ -370,6 +437,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     networks:
       - bvr-network
 
@@ -390,6 +465,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     networks:
       - bvr-network
 
@@ -401,6 +484,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     networks:
       - bvr-network
 
@@ -415,6 +506,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     networks:
       - bvr-network
 
@@ -441,6 +540,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     networks:
       - bvr-network
 

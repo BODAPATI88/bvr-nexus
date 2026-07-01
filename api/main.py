@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import json
 import os
@@ -54,8 +54,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception:
         pass
 
-    # Fallback: check for service token
-    if token == os.getenv("BVR_SERVICE_TOKEN", "bvr-service-token"):
+    # Fallback: check for service token — no default; token must be explicitly configured
+    service_token = os.getenv("BVR_SERVICE_TOKEN")
+    if service_token and token == service_token:
         return {"sub": "bvr-service", "roles": ["bvr-service"]}
 
     raise HTTPException(
@@ -168,9 +169,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RequestLoggingMiddleware)
 
 
+_allowed_origins = [
+    o.strip()
+    for o in os.getenv("API_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -184,7 +190,7 @@ class EventEnvelope(BaseModel):
     payload: Dict[str, Any]
     correlation_id: str
     source: str = "api"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     priority: str = "normal"  # low, normal, high, critical
     user_id: Optional[str] = None
 
@@ -454,24 +460,25 @@ async def post_event_result(event_id: str, result: EventResult):
     """Workers post results back to the API."""
     pool = app.state.db
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO event_results (event_id, result, artifact_urls, metrics, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (event_id) DO UPDATE SET
-                result = EXCLUDED.result,
-                artifact_urls = EXCLUDED.artifact_urls,
-                metrics = EXCLUDED.metrics,
-                updated_at = NOW()
-            """,
-            event_id, json.dumps(result.result) if result.result else None,
-            json.dumps(result.artifact_urls) if result.artifact_urls else None,
-            json.dumps(result.metrics) if result.metrics else None
-        )
-        await conn.execute(
-            "UPDATE events SET status = $1 WHERE event_id = $2",
-            result.status, event_id
-        )
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO event_results (event_id, result, artifact_urls, metrics, updated_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                ON CONFLICT (event_id) DO UPDATE SET
+                    result = EXCLUDED.result,
+                    artifact_urls = EXCLUDED.artifact_urls,
+                    metrics = EXCLUDED.metrics,
+                    updated_at = NOW()
+                """,
+                event_id, json.dumps(result.result) if result.result else None,
+                json.dumps(result.artifact_urls) if result.artifact_urls else None,
+                json.dumps(result.metrics) if result.metrics else None
+            )
+            await conn.execute(
+                "UPDATE events SET status = $1 WHERE event_id = $2",
+                result.status, event_id
+            )
     return {"status": "ok"}
 
 # ── Registry Endpoints ──
@@ -686,25 +693,26 @@ async def kestra_webhook(callback: WebhookCallback):
     # Store result
     pool = app.state.db
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO event_results (event_id, result, artifact_urls, metrics, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (event_id) DO UPDATE SET
-                result = EXCLUDED.result,
-                artifact_urls = EXCLUDED.artifact_urls,
-                metrics = EXCLUDED.metrics,
-                updated_at = NOW()
-            """,
-            callback.correlation_id, 
-            json.dumps(callback.result) if callback.result else None,
-            json.dumps(callback.artifact_urls) if callback.artifact_urls else None,
-            json.dumps(callback.metrics) if callback.metrics else None
-        )
-        await conn.execute(
-            "UPDATE events SET status = $1 WHERE correlation_id = $2",
-            callback.status, callback.correlation_id
-        )
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO event_results (event_id, result, artifact_urls, metrics, updated_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                ON CONFLICT (event_id) DO UPDATE SET
+                    result = EXCLUDED.result,
+                    artifact_urls = EXCLUDED.artifact_urls,
+                    metrics = EXCLUDED.metrics,
+                    updated_at = NOW()
+                """,
+                callback.correlation_id,
+                json.dumps(callback.result) if callback.result else None,
+                json.dumps(callback.artifact_urls) if callback.artifact_urls else None,
+                json.dumps(callback.metrics) if callback.metrics else None
+            )
+            await conn.execute(
+                "UPDATE events SET status = $1 WHERE correlation_id = $2",
+                callback.status, callback.correlation_id
+            )
 
     # Notify any waiting Kestra workflows via Redis pub/sub
     redis = app.state.redis

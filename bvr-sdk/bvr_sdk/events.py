@@ -5,7 +5,7 @@ Uses Redis Streams for lightweight messaging.
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Callable
 from pydantic import BaseModel, Field
 import redis.asyncio as redis
@@ -19,7 +19,7 @@ class EventEnvelope(BaseModel):
     payload: Dict[str, Any]
     correlation_id: str
     source: str = "worker"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     priority: str = "normal"
     user_id: Optional[str] = None
 
