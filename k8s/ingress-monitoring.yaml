@@ -6,14 +6,9 @@ metadata:
   name: ingress-grafana
   namespace: bvr-nexus
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - grafana.bvrinfra.in
   rules:
     - host: grafana.bvrinfra.in
       http:
@@ -34,17 +29,10 @@ metadata:
   name: ingress-telemetry
   namespace: bvr-nexus
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+    traefik.ingress.kubernetes.io/router.entrypoints: web
     traefik.ingress.kubernetes.io/router.middlewares: bvr-nexus-monitoring-basic-auth@kubernetescrd
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - prometheus.bvrinfra.in
-        - jaeger.bvrinfra.in
-        - loki.bvrinfra.in
   rules:
     - host: prometheus.bvrinfra.in
       http:

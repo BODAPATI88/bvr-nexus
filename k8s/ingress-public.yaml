@@ -4,15 +4,9 @@ metadata:
   name: ingress-public
   namespace: bvr-nexus
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - bvrinfra.in
-        - www.bvrinfra.in
   rules:
     - host: bvrinfra.in
       http:
