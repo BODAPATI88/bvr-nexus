@@ -46,3 +46,6 @@ temp/
 
 # Proxy CA cert for egress-proxied build environments — never commit the real cert
 docker/ca-bundle.crt
+
+# Vault initialization output — contains unseal keys and root token
+vault-init.json
