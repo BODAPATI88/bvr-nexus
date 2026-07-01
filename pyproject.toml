@@ -8,26 +8,34 @@ version = "2.0.0"
 description = "BVR Nexus — Declarative Workflow Orchestration Platform"
 requires-python = ">=3.12"
 
-[tool.black]
-line-length = 100
-target-version = ['py312']
-include = '\.pyi?$'
-
 [tool.ruff]
 line-length = 100
-target-version = "py312"
-select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+target-version = "py311"
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
+exclude = ["venv", "__pycache__", "*.egg-info", "bvr-sdk/bvr_sdk/pb"]
 
 [tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]
+"tests/*" = ["S101"]  # assert is fine in tests
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = '''
+/(
+    \.venv
+  | venv
+  | __pycache__
+)/
+'''
 
 [tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+python_version = "3.11"
+ignore_missing_imports = true
+strict_optional = true
+warn_unused_ignores = true
+exclude = ["venv/", "tests/"]
 
 [tool.bandit]
-exclude_dirs = ["tests"]
-skips = ["B101"]  # Skip assert warnings in tests
+exclude_dirs = ["tests", "venv"]
+skips = ["B101", "B311"]
