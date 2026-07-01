@@ -47,5 +47,8 @@ temp/
 # Proxy CA cert for egress-proxied build environments — never commit the real cert
 docker/ca-bundle.crt
 
+# Claude Code internal state (worktree metadata)
+.claude/
+
 # Vault initialization output — contains unseal keys and root token
 vault-init.json
