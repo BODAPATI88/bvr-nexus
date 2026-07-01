@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-public
+  namespace: bvr-nexus
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - bvrinfra.in
+        - www.bvrinfra.in
+  rules:
+    - host: bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: public-site
+                port:
+                  number: 8003
+    - host: www.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: public-site
+                port:
+                  number: 8003

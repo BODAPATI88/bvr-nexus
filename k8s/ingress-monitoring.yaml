@@ -1,0 +1,58 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-monitoring
+  namespace: bvr-nexus
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - grafana.bvrinfra.in
+        - prometheus.bvrinfra.in
+        - jaeger.bvrinfra.in
+        - loki.bvrinfra.in
+  rules:
+    - host: grafana.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+    - host: prometheus.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090
+    - host: jaeger.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+    - host: loki.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: loki
+                port:
+                  number: 3100

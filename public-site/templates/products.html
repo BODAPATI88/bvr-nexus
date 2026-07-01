@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Products — BVR Nexus{% endblock %}
+
+{% block content %}
+
+<div class="max-w-7xl mx-auto px-6 py-16">
+
+  <div class="mb-12">
+    <h1 class="text-4xl font-bold text-slate-900 mb-3">Platform Products</h1>
+    <p class="text-slate-500 text-lg max-w-2xl">
+      BVR Nexus ships as an integrated platform. Every component is designed to work together
+      while remaining independently replaceable.
+    </p>
+  </div>
+
+  <!-- Core Platform -->
+  <section class="mb-14">
+    <h2 class="text-xl font-semibold text-slate-800 mb-6 pb-2 border-b border-slate-200">Core Platform</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-start justify-between mb-3">
+          <div class="font-bold text-slate-900">BVR API Gateway</div>
+          <span class="text-xs font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">v2.0.0</span>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed mb-4">
+          FastAPI-based gateway handling authentication (JWT + Keycloak), rate limiting,
+          event validation, and the full platform registry. The single entry point for all platform operations.
+        </p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">FastAPI</span>
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">JWT Auth</span>
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">Rate Limiting</span>
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">PostgreSQL</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-start justify-between mb-3">
+          <div class="font-bold text-slate-900">AI Gateway</div>
+          <span class="text-xs font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">v2.0.0</span>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed mb-4">
+          Capability-based LLM routing across Claude, GPT, Kimi, and Ollama.
+          Circuit breakers, Redis caching, cost tracking, and automatic failover.
+          Provider priority declared in <code class="bg-slate-100 px-1 rounded text-xs">constitution.yaml</code>.
+        </p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">Claude</span>
+          <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">GPT-4</span>
+          <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">Kimi</span>
+          <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">Ollama</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-start justify-between mb-3">
+          <div class="font-bold text-slate-900">BVR Workers</div>
+          <span class="text-xs font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">v2.0.0</span>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed mb-4">
+          Async Python workers that execute all business logic via BVR SDK.
+          Ships with Review (repository analysis), Research (topic synthesis),
+          and Achieve (goal-oriented task execution) workers.
+        </p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">Review Worker</span>
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">Research Worker</span>
+          <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">Achieve Worker</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-start justify-between mb-3">
+          <div class="font-bold text-slate-900">BVR SDK</div>
+          <span class="text-xs font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">v2.0.0</span>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed mb-4">
+          Unified Python SDK for all platform operations. Covers events, AI calls, storage,
+          telemetry, retry, policy, registry, and plugin discovery. Workers never reach
+          infrastructure or providers directly.
+        </p>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded">ai_gateway_call</span>
+          <span class="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded">emit_event</span>
+          <span class="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded">upload_artifact</span>
+          <span class="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded">policy_check</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Orchestration & Governance -->
+  <section class="mb-14">
+    <h2 class="text-xl font-semibold text-slate-800 mb-6 pb-2 border-b border-slate-200">Orchestration &amp; Governance</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="font-bold text-slate-900 mb-2">Kestra Workflows</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Declarative YAML orchestration. Webhooks, retries, approvals, SLA gates,
+          and notifications — zero business logic. Three bundled workflows: review, research, achieve.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="font-bold text-slate-900 mb-2">OPA Governance</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Three Rego policy files enforced on every event: RBAC (<code class="bg-slate-100 px-1 rounded text-xs">bvr.rego</code>),
+          cost guardrails (<code class="bg-slate-100 px-1 rounded text-xs">cost.rego</code>),
+          data residency (<code class="bg-slate-100 px-1 rounded text-xs">data_residency.rego</code>).
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="font-bold text-slate-900 mb-2">Plugin System</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Self-contained integration manifests under <code class="bg-slate-100 px-1 rounded text-xs">plugins/</code>.
+          Bundled: Claude (AI), GitHub (Code), Slack (Productivity).
+          Auto-discovered at worker startup.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Operations -->
+  <section class="mb-14">
+    <h2 class="text-xl font-semibold text-slate-800 mb-6 pb-2 border-b border-slate-200">Operations &amp; Observability</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-start justify-between mb-2">
+          <div class="font-bold text-slate-900">Operations Console</div>
+          <a href="{{ ops_url }}" target="_blank" rel="noopener"
+             class="text-xs text-sky-600 hover:text-sky-800 font-medium">Open →</a>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Real-time service health, AI provider circuit-breaker status, active worker registry,
+          and integration roster. Auto-refreshes every 30 seconds.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-start justify-between mb-2">
+          <div class="font-bold text-slate-900">Executive Dashboard</div>
+          <a href="{{ ceo_url }}" target="_blank" rel="noopener"
+             class="text-xs text-sky-600 hover:text-sky-800 font-medium">Open →</a>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Business outcome tracking with progress bars, KPI tiles (workflows, workers, integrations, models),
+          and platform-level health status.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- BVR CLI -->
+  <section>
+    <h2 class="text-xl font-semibold text-slate-800 mb-6 pb-2 border-b border-slate-200">Developer Tools</h2>
+    <div class="bg-slate-900 rounded-2xl p-6 text-slate-300 font-mono text-sm">
+      <div class="text-slate-500 text-xs mb-4"># BVR CLI — all platform operations from the terminal</div>
+      <div class="space-y-1">
+        <div><span class="text-sky-400">bvr</span> review --repo https://github.com/org/repo</div>
+        <div><span class="text-sky-400">bvr</span> research --topic "AI workflow patterns"</div>
+        <div><span class="text-sky-400">bvr</span> achieve --goal "Optimise resume for ML roles"</div>
+        <div><span class="text-sky-400">bvr</span> status</div>
+        <div><span class="text-sky-400">bvr</span> workers list</div>
+        <div><span class="text-sky-400">bvr</span> models list</div>
+        <div><span class="text-sky-400">bvr</span> outcomes list</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+{% endblock %}

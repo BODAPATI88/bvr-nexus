@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Support — BVR Nexus{% endblock %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto px-6 py-16">
+
+  <div class="mb-12">
+    <h1 class="text-4xl font-bold text-slate-900 mb-3">Support</h1>
+    <p class="text-slate-500 text-lg">Platform documentation, runbooks, and operational resources.</p>
+  </div>
+
+  <!-- Quick links -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+    <a href="{{ api_url }}/docs" target="_blank" rel="noopener"
+       class="bg-white border border-slate-200 rounded-xl p-5 hover:border-sky-300 hover:shadow-sm transition-all group">
+      <div class="font-semibold text-slate-900 group-hover:text-sky-700 mb-1">API Reference</div>
+      <div class="text-slate-500 text-sm">Interactive OpenAPI docs for all 28+ endpoints</div>
+    </a>
+    <a href="{{ ops_url }}" target="_blank" rel="noopener"
+       class="bg-white border border-slate-200 rounded-xl p-5 hover:border-sky-300 hover:shadow-sm transition-all group">
+      <div class="font-semibold text-slate-900 group-hover:text-sky-700 mb-1">Operations Console</div>
+      <div class="text-slate-500 text-sm">Live service health, worker status, circuit breakers</div>
+    </a>
+    <a href="{{ ceo_url }}" target="_blank" rel="noopener"
+       class="bg-white border border-slate-200 rounded-xl p-5 hover:border-sky-300 hover:shadow-sm transition-all group">
+      <div class="font-semibold text-slate-900 group-hover:text-sky-700 mb-1">Executive Dashboard</div>
+      <div class="text-slate-500 text-sm">KPIs, business outcomes, platform health</div>
+    </a>
+  </div>
+
+  <!-- FAQ -->
+  <section class="mb-12">
+    <h2 class="text-xl font-semibold text-slate-800 mb-6">Frequently Asked Questions</h2>
+    <div class="space-y-4">
+
+      <div class="bg-white border border-slate-200 rounded-xl p-6">
+        <div class="font-semibold text-slate-900 mb-2">How do I add a new AI provider?</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Add a provider block to <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">contracts/constitution.yaml</code>
+          under the relevant capability, then configure the provider in the AI Gateway and add the API key to Vault.
+          Workers do not need to change — the Capability Matcher selects the provider at runtime.
+        </p>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-6">
+        <div class="font-semibold text-slate-900 mb-2">How do I create a new integration?</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Create a plugin directory under <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">plugins/&lt;category&gt;/&lt;name&gt;/</code>
+          with six files: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">manifest.yaml</code>,
+          <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">schema.yaml</code>,
+          <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">permissions.yaml</code>,
+          <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">health.py</code>,
+          <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">worker.py</code>, and
+          <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">__init__.py</code>.
+          The plugin is auto-discovered at worker startup.
+        </p>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-6">
+        <div class="font-semibold text-slate-900 mb-2">What happens when an AI provider is unavailable?</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          The AI Gateway's circuit breaker detects failures and routes to the next provider in the fallback chain:
+          Claude → GPT → Kimi → Ollama (local). Ollama always serves as the last-resort provider with no cost.
+          Workers never implement fallback logic themselves.
+        </p>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-6">
+        <div class="font-semibold text-slate-900 mb-2">How are costs controlled?</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          OPA enforces hard limits via <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">cost.rego</code>:
+          $5.00 max per workflow execution, $50.00 max per user per day.
+          Token usage is tracked per provider call in the AI Gateway via Redis counters.
+          Events that would breach the limit are denied before execution.
+        </p>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-6">
+        <div class="font-semibold text-slate-900 mb-2">Where are secrets stored?</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          All secrets are managed by HashiCorp Vault (KV v2).
+          No credentials are stored in the application code, environment files,
+          or Kubernetes manifests committed to git.
+          Use <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">bash k8s/create-secrets.sh</code>
+          to provision the K8s Secret from a local <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">.env</code> file.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section class="bg-slate-900 rounded-2xl p-8 text-center">
+    <h2 class="text-xl font-bold text-white mb-2">Need help?</h2>
+    <p class="text-slate-400 text-sm mb-6">
+      For platform issues, check the Operations Console first.
+      For bugs or feature requests, open an issue on GitHub.
+    </p>
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+      <a href="{{ ops_url }}" target="_blank" rel="noopener"
+         class="bg-sky-500 hover:bg-sky-400 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+        Check Platform Health
+      </a>
+      <a href="https://github.com/bodapati88/bvr-nexus/issues" target="_blank" rel="noopener"
+         class="border border-slate-600 hover:border-slate-400 text-slate-300 hover:text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+        Open GitHub Issue
+      </a>
+    </div>
+  </section>
+
+</div>
+
+{% endblock %}

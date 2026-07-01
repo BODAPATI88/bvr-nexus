@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}BVR Nexus — Enterprise AI Workflow Platform{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .gradient-hero { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%); }
+    .gradient-text { background: linear-gradient(90deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .card-hover { transition: transform 0.2s, box-shadow 0.2s; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+
+<!-- ── Navigation ── -->
+<nav class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center">
+        <span class="text-white font-bold text-sm">B</span>
+      </div>
+      <span class="text-white font-bold text-lg">BVR Nexus</span>
+    </a>
+    <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+      <a href="/products" class="hover:text-white transition-colors">Products</a>
+      <a href="{{ api_url }}/docs" target="_blank" rel="noopener" class="hover:text-white transition-colors">API Docs</a>
+      <a href="/support" class="hover:text-white transition-colors">Support</a>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="{{ ops_url }}" target="_blank" rel="noopener"
+         class="text-sm text-slate-300 hover:text-white transition-colors hidden md:block">
+        Operations
+      </a>
+      <a href="{{ ceo_url }}" target="_blank" rel="noopener"
+         class="text-sm font-medium bg-sky-500 hover:bg-sky-400 text-white px-4 py-2 rounded-lg transition-colors">
+        Executive Login
+      </a>
+    </div>
+  </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+<!-- ── Footer ── -->
+<footer class="bg-slate-900 border-t border-slate-800 mt-20">
+  <div class="max-w-7xl mx-auto px-6 py-12">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+      <div>
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-7 h-7 rounded-md bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center">
+            <span class="text-white font-bold text-xs">B</span>
+          </div>
+          <span class="text-white font-semibold">BVR Nexus</span>
+        </div>
+        <p class="text-slate-400 text-sm leading-relaxed">
+          Enterprise AI workflow orchestration. Seven layers. Zero complexity tax.
+        </p>
+      </div>
+      <div>
+        <div class="text-slate-300 font-semibold text-sm mb-3">Platform</div>
+        <ul class="space-y-2 text-sm text-slate-400">
+          <li><a href="/products" class="hover:text-slate-200 transition-colors">Products</a></li>
+          <li><a href="{{ api_url }}/docs" target="_blank" rel="noopener" class="hover:text-slate-200 transition-colors">API Reference</a></li>
+          <li><a href="/support" class="hover:text-slate-200 transition-colors">Support</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-slate-300 font-semibold text-sm mb-3">Operations</div>
+        <ul class="space-y-2 text-sm text-slate-400">
+          <li><a href="{{ ops_url }}" target="_blank" rel="noopener" class="hover:text-slate-200 transition-colors">Ops Console</a></li>
+          <li><a href="{{ ceo_url }}" target="_blank" rel="noopener" class="hover:text-slate-200 transition-colors">Executive Dashboard</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-slate-300 font-semibold text-sm mb-3">Architecture</div>
+        <ul class="space-y-2 text-sm text-slate-400">
+          <li class="text-slate-500">Claude → GPT → Kimi → Ollama</li>
+          <li class="text-slate-500">PostgreSQL + pgvector</li>
+          <li class="text-slate-500">Redis Streams</li>
+          <li class="text-slate-500">Kestra Orchestration</li>
+        </ul>
+      </div>
+    </div>
+    <div class="border-t border-slate-800 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="text-slate-500 text-xs">
+        &copy; 2024 BVR Nexus &mdash; v{{ version }}
+      </div>
+      <div class="text-slate-600 text-xs font-mono">
+        7-layer event-driven &bull; Policy-first &bull; AI-native
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
