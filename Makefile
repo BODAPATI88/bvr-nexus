@@ -38,10 +38,10 @@ clean: ## Remove all containers, volumes, and data
 	docker system prune -f
 
 test: ## Run unit tests (excludes integration tests requiring a live stack)
-	pytest tests/ -v --tb=short --ignore=tests/integration
+	python3 -m pytest tests/ -v --tb=short --ignore=tests/integration
 
 test-integration: ## Run integration tests (requires live stack — docker compose up first)
-	pytest tests/integration/ -v --tb=short
+	python3 -m pytest tests/integration/ -v --tb=short
 
 lint: ## Run linting on all Python code
 	ruff check .
@@ -73,38 +73,4 @@ backup: ## Backup PostgreSQL and MinIO
 
 
 secrets: ## Generate strong secrets in .env file
-	@echo "🔐 Generating secrets..."
-	@python3 -c "
-import secrets
-import os
-
-env_file = '.env'
-if not os.path.exists(env_file):
-    open(env_file, 'w').close()
-
-with open(env_file, 'r') as f:
-    lines = f.readlines()
-
-secrets_map = {}
-for line in lines:
-    if '=' in line and not line.startswith('#'):
-        key, val = line.strip().split('=', 1)
-        if val.strip() == 'GENERATE':
-            secrets_map[key] = secrets.token_urlsafe(32)
-
-with open(env_file, 'w') as f:
-    for line in lines:
-        if '=' in line and not line.startswith('#'):
-            key, val = line.strip().split('=', 1)
-            if key in secrets_map:
-                f.write(f'{key}={secrets_map[key]}\n')
-            else:
-                f.write(line)
-        else:
-            f.write(line)
-
-for key, val in secrets_map.items():
-    print(f'  🔑 Generated {key}')
-
-print('✅ Secrets generated in .env')
-"
+	python3 scripts/generate_secrets.py
