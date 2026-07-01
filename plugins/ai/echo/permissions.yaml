@@ -1,0 +1,5 @@
+permissions:
+  - name: no_credentials_required
+    description: "Echo stub requires no external credentials — development use only"
+    required: false
+    secret: false

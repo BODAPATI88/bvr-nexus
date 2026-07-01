@@ -1,0 +1,33 @@
+input:
+  type: object
+  required: [prompt]
+  properties:
+    prompt:
+      type: string
+      description: "The prompt to echo back as a canned response"
+    max_tokens:
+      type: integer
+      default: 4000
+      minimum: 1
+      maximum: 200000
+    temperature:
+      type: number
+      default: 0.7
+      minimum: 0.0
+      maximum: 1.0
+
+output:
+  type: object
+  properties:
+    text:
+      type: string
+      description: "Canned response from the echo stub"
+    tokens_input:
+      type: integer
+    tokens_output:
+      type: integer
+    cost_usd:
+      type: number
+    model:
+      type: string
+      default: "echo-1.0"
