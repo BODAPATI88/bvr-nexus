@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Executive Dashboard — BVR Nexus{% endblock %}
+
+{% block content %}
+
+<!-- ── Page header ── -->
+<div class="mb-8 flex items-start justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Executive Dashboard</h1>
+    <p class="text-slate-500 text-sm mt-1">Platform performance, active integrations, and business outcomes.</p>
+  </div>
+  <span class="inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full
+               {% if platform_ok %}bg-emerald-50 text-emerald-700{% else %}bg-red-50 text-red-700{% endif %}">
+    <span class="w-2 h-2 rounded-full {% if platform_ok %}bg-emerald-500{% else %}bg-red-500{% endif %}"></span>
+    Platform {% if platform_ok %}Operational{% else %}Degraded{% endif %}
+  </span>
+</div>
+
+<!-- ── KPI tiles ── -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Workflows Executed</div>
+    <div class="text-4xl font-bold text-slate-900">{{ total_events }}</div>
+    <div class="text-xs text-slate-400 mt-1">All-time via BVR API</div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Active Workers</div>
+    <div class="text-4xl font-bold text-slate-900">{{ active_workers }}</div>
+    <div class="text-xs text-slate-400 mt-1">Registered in registry</div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Integrations</div>
+    <div class="text-4xl font-bold text-slate-900">{{ active_integrations }}</div>
+    <div class="text-xs text-slate-400 mt-1">Plugins registered</div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">AI Models</div>
+    <div class="text-4xl font-bold text-slate-900">{{ active_models }}</div>
+    <div class="text-xs text-slate-400 mt-1">Registered in gateway</div>
+  </div>
+
+</div>
+
+<!-- ── Outcomes / Goals ── -->
+<section class="mb-10">
+  <h2 class="text-lg font-semibold text-slate-800 mb-4">Business Outcomes</h2>
+  {% if outcomes %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for o in outcomes %}
+    {% set goal = o.get('target', 100) | float %}
+    {% set current = o.get('current') %}
+    {% set pct = ((current | float / goal) * 100) | int if current is not none and goal > 0 else 0 %}
+    {% set status = o.get('status', 'unknown') %}
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-6 py-5">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <div class="font-semibold text-slate-800">{{ o.get('description', o.get('goal_id', '—')) }}</div>
+          <div class="text-xs text-slate-400 mt-0.5 font-mono">{{ o.get('goal_id', '') }}</div>
+        </div>
+        <span class="text-xs font-semibold px-2.5 py-1 rounded-full ml-3 flex-shrink-0
+          {% if status == 'on_track' %}badge-ok
+          {% elif status == 'at_risk' %}badge-warn
+          {% elif status == 'off_track' %}badge-err
+          {% else %}badge-unknown{% endif %}">
+          {{ status | replace('_', ' ') }}
+        </span>
+      </div>
+      <!-- Progress bar -->
+      <div class="mt-2">
+        <div class="flex justify-between text-xs text-slate-500 mb-1">
+          <span>{{ current if current is not none else '—' }} {{ o.get('unit', '') }}</span>
+          <span>Target: {{ goal | int }} {{ o.get('unit', '') }}</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2">
+          <div class="h-2 rounded-full transition-all
+            {% if pct >= 80 %}bg-emerald-500{% elif pct >= 40 %}bg-amber-400{% else %}bg-red-400{% endif %}"
+            style="width: {{ [pct, 100] | min }}%"></div>
+        </div>
+        <div class="text-xs text-slate-400 mt-1 text-right">{{ pct }}%</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 px-6 py-10 text-center shadow-sm">
+    <div class="text-3xl mb-3">📊</div>
+    <div class="text-slate-500 text-sm">No outcomes registered yet.</div>
+    <div class="text-slate-400 text-xs mt-1">
+      Use <code class="bg-slate-100 px-1 rounded">POST /api/v1/outcomes</code> to track business goals.
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<!-- ── Active Integrations ── -->
+<section class="mb-10">
+  <h2 class="text-lg font-semibold text-slate-800 mb-4">Active Integrations</h2>
+  {% if integrations %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Integration</th>
+          <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+          <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Capabilities</th>
+          <th class="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for i in integrations %}
+        {% set sc = i.get('status', 'unknown') %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-6 py-3 font-medium text-slate-800">{{ i.get('name', '—') }}</td>
+          <td class="px-6 py-3 text-slate-500 text-xs capitalize">{{ i.get('type', i.get('type_', '—')) }}</td>
+          <td class="px-6 py-3">
+            {% for cap in (i.get('capabilities') or []) %}
+            <span class="inline-block text-xs bg-blue-50 text-blue-700 rounded px-1.5 py-0.5 mr-1">{{ cap }}</span>
+            {% endfor %}
+          </td>
+          <td class="px-6 py-3 text-right">
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full
+              {% if sc == 'active' %}badge-ok{% elif sc == 'degraded' %}badge-warn{% elif sc == 'inactive' %}badge-err{% else %}badge-unknown{% endif %}">
+              {{ sc }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 px-6 py-8 text-center text-slate-400 text-sm shadow-sm">
+    No integrations registered.
+  </div>
+  {% endif %}
+</section>
+
+<!-- ── AI Models ── -->
+{% if models %}
+<section class="mb-10">
+  <h2 class="text-lg font-semibold text-slate-800 mb-4">AI Models</h2>
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Model</th>
+          <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Provider</th>
+          <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Capabilities</th>
+          <th class="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost / 1k out</th>
+          <th class="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for m in models | sort(attribute='priority') %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-6 py-3 font-medium">{{ m.get('model_name', m.get('model_id', '—')) }}</td>
+          <td class="px-6 py-3 text-slate-500 capitalize text-xs">{{ m.get('provider', '—') }}</td>
+          <td class="px-6 py-3">
+            {% for cap in (m.get('capabilities') or []) %}
+            <span class="inline-block text-xs bg-purple-50 text-purple-700 rounded px-1.5 py-0.5 mr-1">{{ cap }}</span>
+            {% endfor %}
+          </td>
+          <td class="px-6 py-3 text-right text-xs text-slate-600 font-mono">
+            {% if m.get('cost_per_1k_output') %}${{ "%.4f"|format(m.cost_per_1k_output) }}{% else %}—{% endif %}
+          </td>
+          <td class="px-6 py-3 text-right text-xs">
+            <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">{{ m.get('priority', '—') }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Platform details strip ── -->
+<div class="bg-slate-900 text-slate-400 rounded-xl px-6 py-4 text-xs flex flex-wrap gap-6">
+  <span><span class="text-slate-500">Platform</span> BVR Nexus v{{ version }}</span>
+  <span><span class="text-slate-500">Architecture</span> 7-layer event-driven</span>
+  <span><span class="text-slate-500">AI fallback chain</span> Claude → GPT → Kimi → Ollama</span>
+  <span><span class="text-slate-500">Event store</span> PostgreSQL + pgvector</span>
+  <span><span class="text-slate-500">Orchestration</span> Kestra v0.18.0</span>
+</div>
+
+{% endblock %}

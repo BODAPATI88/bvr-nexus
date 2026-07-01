@@ -558,6 +558,40 @@ services:
     networks:
       - bvr-network
 
+  # ───────────────────────────────────────────
+  # OPERATIONS CONSOLE + CEO DASHBOARD
+  # ───────────────────────────────────────────
+  ops-console:
+    build: ./ops-console
+    container_name: bvr-ops-console
+    environment:
+      BVR_API_URL: http://bvr-api:8000
+      AI_GATEWAY_URL: http://ai-gateway:8000
+      PROMETHEUS_URL: http://prometheus:9090
+      BVR_SERVICE_TOKEN: ${BVR_SERVICE_TOKEN}
+    ports:
+      - "8002:8000"
+    depends_on:
+      - bvr-api
+      - ai-gateway
+      - prometheus
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    networks:
+      - bvr-network
+
 volumes:
   postgres_data:
   redis_data:

@@ -1,0 +1,169 @@
+{
+  "uid": "bvr-ceo",
+  "title": "BVR Nexus — Executive Summary",
+  "tags": ["bvr", "executive", "kpi"],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Platform Health",
+      "description": "All critical services reporting UP",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        { "expr": "min(up{job=~\"bvr-api|ai-gateway|redis-exporter\"})", "legendFormat": "health" }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 40 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "All Systems Go", "color": "green" }, "0": { "text": "Degraded", "color": "red" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "API Requests (24h)",
+      "description": "Total HTTP requests to the BVR API",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        { "expr": "increase(http_requests_total{job=\"bvr-api\"}[24h])", "legendFormat": "requests" }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "blue", "mode": "fixed" }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Success Rate (24h)",
+      "description": "HTTP 2xx responses as % of total",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_requests_total{job=\"bvr-api\",status=~\"2..\"}[24h])) / sum(rate(http_requests_total{job=\"bvr-api\"}[24h]))",
+          "legendFormat": "success %"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "text": { "valueSize": 40 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": 0 }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 99 }] },
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Avg Response Time",
+      "description": "Mean API response latency",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"bvr-api\"}[1h]))",
+          "legendFormat": "p50"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 2 }] },
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "API Request Volume (24h)",
+      "gridPos": { "x": 0, "y": 5, "w": 16, "h": 9 },
+      "targets": [
+        { "expr": "rate(http_requests_total{job=\"bvr-api\",status=~\"2..\"}[5m])", "legendFormat": "Success (2xx)" },
+        { "expr": "rate(http_requests_total{job=\"bvr-api\",status=~\"4..\"}[5m])", "legendFormat": "Client Error (4xx)" },
+        { "expr": "rate(http_requests_total{job=\"bvr-api\",status=~\"5..\"}[5m])", "legendFormat": "Server Error (5xx)" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Success (2xx)" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Client Error (4xx)" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Server Error (5xx)" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 6,
+      "type": "piechart",
+      "title": "Requests by Path",
+      "gridPos": { "x": 16, "y": 5, "w": 8, "h": 9 },
+      "targets": [
+        { "expr": "sum by (path) (increase(http_requests_total{job=\"bvr-api\"}[24h]))", "legendFormat": "{{path}}" }
+      ],
+      "options": {
+        "pieType": "donut",
+        "displayLabels": ["name", "percent"],
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value"] }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Redis Memory — Event Bus",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "redis_memory_used_bytes", "legendFormat": "Used" },
+        { "expr": "redis_memory_max_bytes", "legendFormat": "Max" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 5 } } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "AI Gateway — Request Rate",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "rate(http_requests_total{job=\"ai-gateway\"}[5m])", "legendFormat": "{{status}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 8 } }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    }
+  ]
+}
