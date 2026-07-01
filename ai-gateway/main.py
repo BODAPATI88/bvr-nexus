@@ -11,7 +11,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 # Add bvr-sdk to path
@@ -323,3 +324,8 @@ async def get_providers(capability_id: str):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "ai-gateway", "version": "2.1.0"}
+
+
+@app.get("/metrics")
+async def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

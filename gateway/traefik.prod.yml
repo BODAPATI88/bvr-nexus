@@ -3,6 +3,12 @@ entryPoints:
     address: ":80"
   websecure:
     address: ":443"
+  traefik:
+    address: ":8080"
+
+api:
+  dashboard: true
+  insecure: false
 
 providers:
   docker:
@@ -31,6 +37,16 @@ http:
       entryPoints:
         - web
 
+    # Dashboard accessible at http://localhost:8082/dashboard/ with BasicAuth.
+    # TRAEFIK_DASHBOARD_USERS format: htpasswd -nb admin pass | sed 's/\$/\$\$/g'
+    traefik-dashboard:
+      rule: "PathPrefix(`/dashboard`) || PathPrefix(`/api`)"
+      service: api@internal
+      entryPoints:
+        - traefik
+      middlewares:
+        - dashboard-auth
+
   services:
     kestra:
       loadBalancer:
@@ -52,3 +68,8 @@ http:
       rateLimit:
         average: 100
         burst: 50
+
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "${TRAEFIK_DASHBOARD_USERS}"

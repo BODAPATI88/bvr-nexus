@@ -96,10 +96,22 @@ _services_mod_events.EventService = _FakeEventService
 _services_mod_registry.RegistryService = _FakeRegistryService
 _services_pkg.EventService = _FakeEventService
 _services_pkg.RegistryService = _FakeRegistryService
-sys.modules["api"] = _types.ModuleType("api")
+# api must be a package (needs __path__) so that submodule imports like
+# 'from api.middleware import ...' work when api/main.py is exec'd below.
+_api_pkg = _types.ModuleType("api")
+_api_pkg.__path__ = [str(_REPO_ROOT / "api")]
+sys.modules["api"] = _api_pkg
 sys.modules["api.services"] = _services_pkg
 sys.modules["api.services.events"] = _services_mod_events
 sys.modules["api.services.registry"] = _services_mod_registry
+
+# Load the real api.middleware (no heavy deps) so the import inside api/main.py works.
+_middleware_spec = importlib.util.spec_from_file_location(
+    "api.middleware", str(_REPO_ROOT / "api" / "middleware.py")
+)
+_middleware_mod = importlib.util.module_from_spec(_middleware_spec)
+_middleware_spec.loader.exec_module(_middleware_mod)
+sys.modules["api.middleware"] = _middleware_mod
 
 _api_spec = importlib.util.spec_from_file_location("api.main", str(_API_FILE))
 _api_mod = importlib.util.module_from_spec(_api_spec)
