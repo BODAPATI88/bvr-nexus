@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: public-site
-          image: bvr-nexus/public-site:3.0.0
+          image: docker.io/bvr-nexus/public-site:3.0.0
           imagePullPolicy: Never
           ports:
             - containerPort: 8000
