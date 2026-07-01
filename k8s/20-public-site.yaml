@@ -18,16 +18,9 @@ spec:
     spec:
       containers:
         - name: public-site
-          image: bvr-nexus/public-site:2.0.0
+          image: bvr-nexus/public-site:3.0.0
           ports:
             - containerPort: 8000
-          env:
-            - name: CEO_URL
-              value: "https://ceo.bvrinfra.in"
-            - name: OPS_URL
-              value: "https://ops.bvrinfra.in"
-            - name: API_URL
-              value: "https://api.bvrinfra.in"
           readinessProbe:
             httpGet:
               path: /health
