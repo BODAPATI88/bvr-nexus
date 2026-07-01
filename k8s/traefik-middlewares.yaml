@@ -1,0 +1,32 @@
+# Traefik Middleware CRDs — access control layer
+# These are referenced by ingress files via:
+#   traefik.ingress.kubernetes.io/router.middlewares: bvr-nexus-<name>@kubernetescrd
+
+# ── Vault: IP allowlist — restrict to internal/VPN networks only ──
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: vault-ip-allowlist
+  namespace: bvr-nexus
+spec:
+  ipAllowList:
+    # Replace with your actual VPN/internal CIDR(s).
+    # RFC1918 private ranges are defaults — restrict further as needed.
+    sourceRange:
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+---
+# ── Monitoring (Prometheus, Loki, Jaeger): BasicAuth ──
+# Secret 'monitoring-auth-secret' is created by k8s/create-secrets.sh.
+# The secret must contain key 'users' in htpasswd format.
+# Generate a hash: htpasswd -nb admin <your-password>
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: monitoring-basic-auth
+  namespace: bvr-nexus
+spec:
+  basicAuth:
+    secret: monitoring-auth-secret
+    realm: "BVR Nexus Monitoring"

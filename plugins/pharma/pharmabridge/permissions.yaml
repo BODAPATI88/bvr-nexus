@@ -1,0 +1,41 @@
+version: "1.0.0"
+
+secrets:
+  - key: vault://secrets/pharmabridge/api_key
+    description: "Pharmabridge data source API key"
+    required: false
+  - key: vault://secrets/anthropic/api_key
+    description: "Anthropic API key — sourced from AI Gateway, not used directly"
+    required: false
+
+network:
+  egress:
+    - host: ai-gateway
+      port: 8001
+      protocol: http
+      description: "AI Gateway for LLM calls"
+    - host: bvr-api
+      port: 8000
+      protocol: http
+      description: "BVR API for event emission and registry"
+
+storage:
+  read:
+    - "artifacts/pharmabridge/input/"
+  write:
+    - "artifacts/pharmabridge/reports/"
+    - "artifacts/pharmabridge/raw/"
+
+data_classification:
+  sensitivity: high
+  contains_pii: true
+  contains_phi: true
+  data_residency:
+    allowed_regions: ["eu-west-1", "us-east-1"]
+    prohibited_regions: []
+
+compliance:
+  frameworks:
+    - HIPAA
+    - GDPR
+    - GCP_ICH_E6

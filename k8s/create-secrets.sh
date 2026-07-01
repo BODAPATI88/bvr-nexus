@@ -50,6 +50,21 @@ kubectl create secret generic bvr-nexus-secrets \
   --from-literal=ACME_EMAIL="${ACME_EMAIL:-admin@bvrinfra.in}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# monitoring-auth-secret: htpasswd credentials for Prometheus, Loki, Jaeger
+# Generate a hash: htpasswd -nb admin <your-password>
+# Then set MONITORING_BASIC_AUTH_USERS="admin:<hash>" in your .env
+if [ -n "${MONITORING_BASIC_AUTH_USERS:-}" ]; then
+  echo "Creating monitoring-auth-secret..."
+  kubectl create secret generic monitoring-auth-secret \
+    --namespace="$NAMESPACE" \
+    --from-literal=users="${MONITORING_BASIC_AUTH_USERS}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "WARNING: MONITORING_BASIC_AUTH_USERS not set — skipping monitoring-auth-secret."
+  echo "         Prometheus, Loki, and Jaeger will be inaccessible via ingress until set."
+  echo "         Run: htpasswd -nb admin <password> to generate the value."
+fi
+
 echo ""
 echo "Done. Verify with:"
 echo "  kubectl get secret bvr-nexus-secrets -n bvr-nexus"
