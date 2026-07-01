@@ -54,6 +54,7 @@ spec:
         - name: kestra
           image: kestra/kestra:v0.18.0
           imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/app/kestra"]
           args: ["server", "standalone"]
           ports:
             - name: ui
