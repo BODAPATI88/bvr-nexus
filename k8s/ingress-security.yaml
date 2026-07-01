@@ -1,20 +1,20 @@
+# Keycloak — SSO provider; handles its own authentication.
+# Kestra — workflow UI; protected by Kestra's built-in credential system.
+# Both require public access to function correctly.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ingress-security
+  name: ingress-auth-services
   namespace: bvr-nexus
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.tls.certresolver: le
-    # Note: vault.bvrinfra.in should be restricted to VPN/internal networks
-    # via a network policy or Traefik IP allowlist middleware before exposing publicly.
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
         - keycloak.bvrinfra.in
-        - vault.bvrinfra.in
         - kestra.bvrinfra.in
   rules:
     - host: keycloak.bvrinfra.in
@@ -27,16 +27,6 @@ spec:
                 name: keycloak
                 port:
                   number: 8080
-    - host: vault.bvrinfra.in
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: vault
-                port:
-                  number: 8200
     - host: kestra.bvrinfra.in
       http:
         paths:
@@ -47,3 +37,32 @@ spec:
                 name: kestra
                 port:
                   number: 8080
+---
+# Vault — secrets management; restricted to internal/VPN networks only.
+# Customize vault-ip-allowlist sourceRange in k8s/traefik-middlewares.yaml.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-vault
+  namespace: bvr-nexus
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+    traefik.ingress.kubernetes.io/router.middlewares: bvr-nexus-vault-ip-allowlist@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - vault.bvrinfra.in
+  rules:
+    - host: vault.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vault
+                port:
+                  number: 8200

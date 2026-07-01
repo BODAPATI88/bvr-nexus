@@ -1,0 +1,41 @@
+id: pharmabridge
+name: Pharmabridge
+version: 1.0.0
+type: pharma
+author: BVR Nexus
+description: |
+  Pharmabridge clinical trial data bridge.
+  Ingests structured trial data (CSV, HL7 v2, FHIR R4), runs AI-assisted
+  analysis across efficacy, safety, and enrollment dimensions, and produces
+  structured reports stored in MinIO.
+
+capabilities:
+  - pharma.data.ingest
+  - pharma.trial.analyze
+  - pharma.report.generate
+
+dependencies:
+  - httpx>=0.27.0
+
+config:
+  api_key: "vault://secrets/pharmabridge/api_key"
+  timeout: "120s"
+
+permissions:
+  - name: api_key
+    description: "Pharmabridge data source API key"
+    required: false
+    secret: true
+
+supported_event_types:
+  - bvr.pharma.trial.ingest
+  - bvr.pharma.trial.analyze
+  - bvr.pharma.report.generate
+
+min_platform_version: "2.0.0"
+
+tags:
+  - pharma
+  - clinical-trials
+  - healthcare
+  - regulated
