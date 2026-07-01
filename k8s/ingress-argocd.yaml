@@ -2,23 +2,17 @@
 # Apply separately after ArgoCD is installed:
 #   kubectl apply -f k8s/ingress-argocd.yaml
 #
-# ArgoCD server must be started with --insecure flag (or TLS passthrough configured)
-# when terminating TLS at the ingress layer. Add to argocd-server deployment args:
-#   --insecure
+# Cloudflare Tunnel terminates TLS; Traefik routes plain HTTP to argocd-server.
+# ArgoCD server must run with --insecure flag so it doesn't redirect to HTTPS.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ingress-argocd
   namespace: argocd
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
-  tls:
-    - hosts:
-        - argo.bvrinfra.in
   rules:
     - host: argo.bvrinfra.in
       http:
