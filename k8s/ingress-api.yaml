@@ -27,4 +27,4 @@ spec:
               service:
                 name: ai-gateway
                 port:
-                  number: 8001
+                  number: 8000
