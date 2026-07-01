@@ -261,3 +261,288 @@ class TestRegistryServiceIntegrations:
         result = await svc.list_integrations()
 
         assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# Load new service modules
+# ---------------------------------------------------------------------------
+
+_ai_gateway_svc_mod = _load_svc(
+    "api.services.ai_gateway_real",
+    str(_REPO_ROOT / "api" / "services" / "ai_gateway.py"),
+)
+_outcomes_svc_mod = _load_svc(
+    "api.services.outcomes_real",
+    str(_REPO_ROOT / "api" / "services" / "outcomes.py"),
+)
+_approvals_svc_mod = _load_svc(
+    "api.services.approvals_real",
+    str(_REPO_ROOT / "api" / "services" / "approvals.py"),
+)
+
+AIGatewayService = _ai_gateway_svc_mod.AIGatewayService
+OutcomeService = _outcomes_svc_mod.OutcomeService
+ApprovalService = _approvals_svc_mod.ApprovalService
+
+
+# ---------------------------------------------------------------------------
+# AIGatewayService
+# ---------------------------------------------------------------------------
+
+class TestAIGatewayServiceModels:
+    async def test_register_model_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = AIGatewayService(pool)
+
+        await svc.register_model(
+            model_id="claude-sonnet-4",
+            provider="anthropic",
+            model_name="claude-sonnet-4-20250514",
+            capabilities=["code_analysis"],
+            priority=1,
+            fallback="gpt-4o",
+            cost_per_1k_input=0.003,
+            cost_per_1k_output=0.015,
+        )
+
+        conn.execute.assert_awaited_once()
+
+    async def test_register_model_passes_model_id(self):
+        pool, conn = _make_pool()
+        svc = AIGatewayService(pool)
+
+        await svc.register_model(
+            model_id="my-model",
+            provider="openai",
+            model_name="gpt-4o",
+            capabilities=["chat"],
+            priority=2,
+            fallback=None,
+            cost_per_1k_input=0.0025,
+            cost_per_1k_output=0.012,
+        )
+
+        args = conn.execute.call_args[0]
+        assert "my-model" in args
+
+    async def test_list_models_calls_fetch(self):
+        pool, conn = _make_pool()
+        conn.fetch = AsyncMock(return_value=[])
+        svc = AIGatewayService(pool)
+
+        result = await svc.list_models()
+
+        conn.fetch.assert_awaited_once()
+        assert isinstance(result, list)
+
+
+class TestAIGatewayServicePrompts:
+    async def test_register_prompt_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = AIGatewayService(pool)
+
+        await svc.register_prompt(
+            prompt_id="review-prompt-v1",
+            version="1.0",
+            template="Review the following code: {code}",
+            variables=["code"],
+            model_preference="claude",
+        )
+
+        conn.execute.assert_awaited_once()
+
+    async def test_register_prompt_passes_prompt_id(self):
+        pool, conn = _make_pool()
+        svc = AIGatewayService(pool)
+
+        await svc.register_prompt(
+            prompt_id="my-prompt",
+            version="2.0",
+            template="Hello {name}",
+            variables=["name"],
+            model_preference=None,
+        )
+
+        args = conn.execute.call_args[0]
+        assert "my-prompt" in args
+
+
+class TestAIGatewayServicePolicies:
+    async def test_register_policy_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = AIGatewayService(pool)
+
+        await svc.register_policy(
+            policy_id="cost-guardrail",
+            rego_path="governance/rego/cost.rego",
+            description="Enforces per-execution cost limits",
+            applies_to=["bvr.review", "bvr.achieve"],
+        )
+
+        conn.execute.assert_awaited_once()
+
+    async def test_register_policy_passes_policy_id(self):
+        pool, conn = _make_pool()
+        svc = AIGatewayService(pool)
+
+        await svc.register_policy(
+            policy_id="rbac-policy",
+            rego_path="governance/rego/bvr.rego",
+            description="RBAC enforcement",
+            applies_to=["*"],
+        )
+
+        args = conn.execute.call_args[0]
+        assert "rbac-policy" in args
+
+
+# ---------------------------------------------------------------------------
+# OutcomeService
+# ---------------------------------------------------------------------------
+
+class TestOutcomeService:
+    async def test_register_outcome_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = OutcomeService(pool)
+
+        await svc.register_outcome(
+            goal_id="goal-improve-test-coverage",
+            description="Increase test coverage to 80%",
+            metric="coverage_pct",
+            target=80.0,
+            unit="percent",
+            current=55.0,
+            workflow_id="bvr.achieve.coverage",
+            status="on_track",
+        )
+
+        conn.execute.assert_awaited_once()
+
+    async def test_register_outcome_passes_goal_id(self):
+        pool, conn = _make_pool()
+        svc = OutcomeService(pool)
+
+        await svc.register_outcome(
+            goal_id="my-goal",
+            description="Some goal",
+            metric="count",
+            target=100.0,
+            unit="items",
+            current=None,
+            workflow_id="wf-1",
+            status="on_track",
+        )
+
+        args = conn.execute.call_args[0]
+        assert "my-goal" in args
+
+    async def test_list_outcomes_returns_list(self):
+        pool, conn = _make_pool()
+        conn.fetch = AsyncMock(return_value=[])
+        svc = OutcomeService(pool)
+
+        result = await svc.list_outcomes()
+
+        conn.fetch.assert_awaited_once()
+        assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# ApprovalService
+# ---------------------------------------------------------------------------
+
+class TestApprovalService:
+    async def test_create_approval_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = ApprovalService(pool)
+
+        await svc.create_approval(
+            approval_id="appr-001",
+            action="deploy",
+            resource="bvr-api",
+            approvers=["alice@example.com"],
+            status="pending",
+            created_at="2026-07-01T00:00:00Z",
+            expires_at="2026-07-02T00:00:00Z",
+        )
+
+        conn.execute.assert_awaited_once()
+
+    async def test_create_approval_passes_approval_id(self):
+        pool, conn = _make_pool()
+        svc = ApprovalService(pool)
+
+        await svc.create_approval(
+            approval_id="my-appr",
+            action="scale",
+            resource="workers",
+            approvers=["bob@example.com"],
+            status="pending",
+            created_at="2026-07-01T00:00:00Z",
+            expires_at="2026-07-02T00:00:00Z",
+        )
+
+        args = conn.execute.call_args[0]
+        assert "my-appr" in args
+
+    async def test_get_approval_returns_none_when_not_found(self):
+        pool, conn = _make_pool()
+        conn.fetchrow = AsyncMock(return_value=None)
+        svc = ApprovalService(pool)
+
+        result = await svc.get_approval("nonexistent")
+
+        assert result is None
+
+    async def test_get_approval_returns_dict_when_found(self):
+        pool, conn = _make_pool()
+        fake_row = {"approval_id": "appr-1", "status": "pending", "approvers": ["a@b.com"]}
+        conn.fetchrow = AsyncMock(return_value=fake_row)
+        svc = ApprovalService(pool)
+
+        result = await svc.get_approval("appr-1")
+
+        assert isinstance(result, dict)
+        assert result["approval_id"] == "appr-1"
+
+    async def test_approve_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = ApprovalService(pool)
+
+        await svc.approve("appr-1", "alice@example.com")
+
+        conn.execute.assert_awaited_once()
+        args = conn.execute.call_args[0]
+        assert "alice@example.com" in args
+
+    async def test_deny_calls_execute(self):
+        pool, conn = _make_pool()
+        svc = ApprovalService(pool)
+
+        await svc.deny("appr-1", "bob@example.com")
+
+        conn.execute.assert_awaited_once()
+        args = conn.execute.call_args[0]
+        assert "bob@example.com" in args
+
+    async def test_list_approvals_no_filter(self):
+        pool, conn = _make_pool()
+        conn.fetch = AsyncMock(return_value=[])
+        svc = ApprovalService(pool)
+
+        result = await svc.list_approvals()
+
+        conn.fetch.assert_awaited_once()
+        assert isinstance(result, list)
+
+    async def test_list_approvals_with_status_filter(self):
+        pool, conn = _make_pool()
+        conn.fetch = AsyncMock(return_value=[])
+        svc = ApprovalService(pool)
+
+        result = await svc.list_approvals(status="pending")
+
+        conn.fetch.assert_awaited_once()
+        # Verify the status filter was passed as an argument
+        args = conn.fetch.call_args[0]
+        assert "pending" in args

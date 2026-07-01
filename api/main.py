@@ -21,7 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.auth import get_current_user, require_role, security  # noqa: F401
 from api.middleware import ContentTypeMiddleware, PayloadSizeMiddleware
-from api.services import EventService, RegistryService
+from api.services import AIGatewayService, ApprovalService, EventService, OutcomeService, RegistryService
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 
@@ -132,6 +132,9 @@ async def lifespan(app: FastAPI):
 
     app.state.event_service = EventService(app.state.db)
     app.state.registry_service = RegistryService(app.state.db)
+    app.state.ai_gateway_service = AIGatewayService(app.state.db)
+    app.state.outcome_service = OutcomeService(app.state.db)
+    app.state.approval_service = ApprovalService(app.state.db)
 
     yield
 
@@ -507,54 +510,36 @@ async def list_integrations():
 
 @app.post("/api/v1/ai-gateway/models")
 async def register_model(model: ModelConfig):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO models
-                (id, provider, model_name, capabilities, priority, fallback,
-                 cost_per_1k_input, cost_per_1k_output)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO UPDATE SET
-                provider           = EXCLUDED.provider,
-                model_name         = EXCLUDED.model_name,
-                capabilities       = EXCLUDED.capabilities,
-                priority           = EXCLUDED.priority,
-                fallback           = EXCLUDED.fallback,
-                cost_per_1k_input  = EXCLUDED.cost_per_1k_input,
-                cost_per_1k_output = EXCLUDED.cost_per_1k_output
-            """,
-            model.id, model.provider, model.model_name, model.capabilities,
-            model.priority, model.fallback, model.cost_per_1k_input, model.cost_per_1k_output,
-        )
+    svc: AIGatewayService = app.state.ai_gateway_service
+    await svc.register_model(
+        model_id=model.id,
+        provider=model.provider,
+        model_name=model.model_name,
+        capabilities=model.capabilities,
+        priority=model.priority,
+        fallback=model.fallback,
+        cost_per_1k_input=model.cost_per_1k_input,
+        cost_per_1k_output=model.cost_per_1k_output,
+    )
     return {"status": "registered", "model_id": model.id}
 
 
 @app.get("/api/v1/ai-gateway/models")
 async def list_models():
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM models ORDER BY priority")
-    return [dict(r) for r in rows]
+    svc: AIGatewayService = app.state.ai_gateway_service
+    return await svc.list_models()
 
 
 @app.post("/api/v1/ai-gateway/prompts")
 async def register_prompt(prompt: PromptTemplate):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO prompts (id, version, template, variables, model_preference)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (id) DO UPDATE SET
-                version          = EXCLUDED.version,
-                template         = EXCLUDED.template,
-                variables        = EXCLUDED.variables,
-                model_preference = EXCLUDED.model_preference
-            """,
-            prompt.id, prompt.version, prompt.template,
-            prompt.variables, prompt.model_preference,
-        )
+    svc: AIGatewayService = app.state.ai_gateway_service
+    await svc.register_prompt(
+        prompt_id=prompt.id,
+        version=prompt.version,
+        template=prompt.template,
+        variables=prompt.variables,
+        model_preference=prompt.model_preference,
+    )
     return {"status": "registered", "prompt_id": prompt.id}
 
 
@@ -565,19 +550,13 @@ async def register_prompt(prompt: PromptTemplate):
 
 @app.post("/api/v1/policies")
 async def register_policy(policy: PolicyRule):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO policies (id, rego_path, description, applies_to)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO UPDATE SET
-                rego_path   = EXCLUDED.rego_path,
-                description = EXCLUDED.description,
-                applies_to  = EXCLUDED.applies_to
-            """,
-            policy.id, policy.rego_path, policy.description, policy.applies_to,
-        )
+    svc: AIGatewayService = app.state.ai_gateway_service
+    await svc.register_policy(
+        policy_id=policy.id,
+        rego_path=policy.rego_path,
+        description=policy.description,
+        applies_to=policy.applies_to,
+    )
     return {"status": "registered", "policy_id": policy.id}
 
 
@@ -588,34 +567,24 @@ async def register_policy(policy: PolicyRule):
 
 @app.post("/api/v1/outcomes")
 async def register_outcome(outcome: OutcomeMetric):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO outcomes
-                (goal_id, description, metric, target, unit, current, workflow_id, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (goal_id) DO UPDATE SET
-                description = EXCLUDED.description,
-                metric      = EXCLUDED.metric,
-                target      = EXCLUDED.target,
-                unit        = EXCLUDED.unit,
-                current     = EXCLUDED.current,
-                workflow_id = EXCLUDED.workflow_id,
-                status      = EXCLUDED.status
-            """,
-            outcome.goal_id, outcome.description, outcome.metric, outcome.target,
-            outcome.unit, outcome.current, outcome.workflow_id, outcome.status,
-        )
+    svc: OutcomeService = app.state.outcome_service
+    await svc.register_outcome(
+        goal_id=outcome.goal_id,
+        description=outcome.description,
+        metric=outcome.metric,
+        target=outcome.target,
+        unit=outcome.unit,
+        current=outcome.current,
+        workflow_id=outcome.workflow_id,
+        status=outcome.status,
+    )
     return {"status": "registered", "goal_id": outcome.goal_id}
 
 
 @app.get("/api/v1/outcomes")
 async def list_outcomes():
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM outcomes")
-    return [dict(r) for r in rows]
+    svc: OutcomeService = app.state.outcome_service
+    return await svc.list_outcomes()
 
 
 # ---------------------------------------------------------------------------
@@ -691,89 +660,58 @@ class ApprovalRequest(BaseModel):
 
 @app.post("/api/v1/approvals")
 async def create_approval(request: ApprovalRequest):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO approvals
-                (approval_id, action, resource, approvers, status, created_at, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """,
-            request.approval_id, request.action, request.resource,
-            request.approvers, request.status, request.created_at, request.expires_at,
-        )
+    svc: ApprovalService = app.state.approval_service
+    await svc.create_approval(
+        approval_id=request.approval_id,
+        action=request.action,
+        resource=request.resource,
+        approvers=request.approvers,
+        status=request.status,
+        created_at=request.created_at,
+        expires_at=request.expires_at,
+    )
     return {"status": "created", "approval_id": request.approval_id}
 
 
 @app.get("/api/v1/approvals/{approval_id}")
 async def get_approval(approval_id: str):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM approvals WHERE approval_id = $1", approval_id
-        )
+    svc: ApprovalService = app.state.approval_service
+    row = await svc.get_approval(approval_id)
     if not row:
         raise HTTPException(status_code=404, detail="Approval not found")
-    return dict(row)
+    return row
 
 
 @app.post("/api/v1/approvals/{approval_id}/approve")
 async def approve_request(approval_id: str, approver: str):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM approvals WHERE approval_id = $1", approval_id
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="Approval not found")
-        if row["status"] != "pending":
-            raise HTTPException(status_code=400, detail="Approval already processed")
-        if approver not in row["approvers"]:
-            raise HTTPException(status_code=403, detail="Not an authorized approver")
-        await conn.execute(
-            """
-            UPDATE approvals
-            SET status = 'approved', approved_by = $1, approved_at = NOW()
-            WHERE approval_id = $2
-            """,
-            approver, approval_id,
-        )
+    svc: ApprovalService = app.state.approval_service
+    row = await svc.get_approval(approval_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    if row["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Approval already processed")
+    if approver not in row["approvers"]:
+        raise HTTPException(status_code=403, detail="Not an authorized approver")
+    await svc.approve(approval_id, approver)
     return {"status": "approved", "approval_id": approval_id}
 
 
 @app.post("/api/v1/approvals/{approval_id}/deny")
 async def deny_request(approval_id: str, approver: str):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM approvals WHERE approval_id = $1", approval_id
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="Approval not found")
-        if row["status"] != "pending":
-            raise HTTPException(status_code=400, detail="Approval already processed")
-        await conn.execute(
-            """
-            UPDATE approvals
-            SET status = 'denied', denied_by = $1
-            WHERE approval_id = $2
-            """,
-            approver, approval_id,
-        )
+    svc: ApprovalService = app.state.approval_service
+    row = await svc.get_approval(approval_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    if row["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Approval already processed")
+    await svc.deny(approval_id, approver)
     return {"status": "denied", "approval_id": approval_id}
 
 
 @app.get("/api/v1/approvals")
 async def list_approvals(status: Optional[str] = None):
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        if status:
-            rows = await conn.fetch(
-                "SELECT * FROM approvals WHERE status = $1 ORDER BY created_at DESC", status
-            )
-        else:
-            rows = await conn.fetch("SELECT * FROM approvals ORDER BY created_at DESC")
-    return [dict(r) for r in rows]
+    svc: ApprovalService = app.state.approval_service
+    return await svc.list_approvals(status)
 
 
 # ---------------------------------------------------------------------------

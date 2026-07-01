@@ -62,6 +62,9 @@ import types as _types
 _services_pkg = _types.ModuleType("api.services")
 _services_mod_events = _types.ModuleType("api.services.events")
 _services_mod_registry = _types.ModuleType("api.services.registry")
+_services_mod_ai_gateway = _types.ModuleType("api.services.ai_gateway")
+_services_mod_outcomes = _types.ModuleType("api.services.outcomes")
+_services_mod_approvals = _types.ModuleType("api.services.approvals")
 
 class _FakeEventService:
     """Thin service stub that delegates through the mock pool so assertions on
@@ -92,10 +95,39 @@ class _FakeRegistryService:
     async def register_integration(self, **kw): pass
     async def list_integrations(self): return []
 
+class _FakeAIGatewayService:
+    def __init__(self, pool): self._pool = pool
+    async def register_model(self, **kw): pass
+    async def list_models(self): return []
+    async def register_prompt(self, **kw): pass
+    async def register_policy(self, **kw): pass
+
+
+class _FakeOutcomeService:
+    def __init__(self, pool): self._pool = pool
+    async def register_outcome(self, **kw): pass
+    async def list_outcomes(self): return []
+
+
+class _FakeApprovalService:
+    def __init__(self, pool): self._pool = pool
+    async def create_approval(self, **kw): pass
+    async def get_approval(self, approval_id): return None
+    async def approve(self, approval_id, approver): pass
+    async def deny(self, approval_id, approver): pass
+    async def list_approvals(self, status=None): return []
+
+
 _services_mod_events.EventService = _FakeEventService
 _services_mod_registry.RegistryService = _FakeRegistryService
+_services_mod_ai_gateway.AIGatewayService = _FakeAIGatewayService
+_services_mod_outcomes.OutcomeService = _FakeOutcomeService
+_services_mod_approvals.ApprovalService = _FakeApprovalService
 _services_pkg.EventService = _FakeEventService
 _services_pkg.RegistryService = _FakeRegistryService
+_services_pkg.AIGatewayService = _FakeAIGatewayService
+_services_pkg.OutcomeService = _FakeOutcomeService
+_services_pkg.ApprovalService = _FakeApprovalService
 # api must be a package (needs __path__) so that submodule imports like
 # 'from api.middleware import ...' work when api/main.py is exec'd below.
 _api_pkg = _types.ModuleType("api")
@@ -104,6 +136,9 @@ sys.modules["api"] = _api_pkg
 sys.modules["api.services"] = _services_pkg
 sys.modules["api.services.events"] = _services_mod_events
 sys.modules["api.services.registry"] = _services_mod_registry
+sys.modules["api.services.ai_gateway"] = _services_mod_ai_gateway
+sys.modules["api.services.outcomes"] = _services_mod_outcomes
+sys.modules["api.services.approvals"] = _services_mod_approvals
 
 # Load the real api.middleware (no heavy deps) so the import inside api/main.py works.
 _middleware_spec = importlib.util.spec_from_file_location(
