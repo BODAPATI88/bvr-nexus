@@ -11,6 +11,9 @@ data:
       http_listen_port: 3100
       grpc_listen_port: 9096
 
+    common:
+      path_prefix: /tmp/loki
+
     ingester:
       wal:
         dir: /tmp/loki/wal
@@ -41,6 +44,9 @@ data:
         cache_ttl: 24h
       filesystem:
         directory: /tmp/loki/chunks
+
+    compactor:
+      working_directory: /tmp/loki/compactor
 
     limits_config:
       allow_structured_metadata: false
