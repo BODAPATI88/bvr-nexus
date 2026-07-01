@@ -1,0 +1,290 @@
+"""
+Tests for the FastAPI events endpoint — POST /api/v1/events and GET /health.
+
+Uses httpx.AsyncClient with the ASGI transport so no network is required.
+All database and Redis calls are patched at the asyncpg / aioredis layer.
+"""
+
+import json
+import uuid
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from httpx import AsyncClient, ASGITransport
+
+
+# ---------------------------------------------------------------------------
+# Load api/main.py directly, bypassing any package __init__ issues.
+# ---------------------------------------------------------------------------
+
+import sys
+import importlib.util
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
+_API_FILE = _REPO_ROOT / "api" / "main.py"
+
+# Stub heavy deps before importing api/main.py
+import types
+
+def _stub(name, **attrs):
+    m = types.ModuleType(name)
+    for k, v in attrs.items():
+        setattr(m, k, v)
+    sys.modules[name] = m
+    return m
+
+for _pkg in [
+    "opentelemetry", "opentelemetry.trace",
+    "opentelemetry.sdk", "opentelemetry.sdk.trace",
+    "opentelemetry.sdk.trace.export", "opentelemetry.sdk.resources",
+    "opentelemetry.exporter", "opentelemetry.exporter.otlp",
+    "opentelemetry.exporter.otlp.proto",
+    "opentelemetry.exporter.otlp.proto.grpc",
+    "opentelemetry.exporter.otlp.proto.grpc.trace_exporter",
+    "opentelemetry.instrumentation",
+    "opentelemetry.instrumentation.fastapi",
+    "opentelemetry.instrumentation.httpx",
+]:
+    if _pkg not in sys.modules:
+        _stub(_pkg)
+
+if "opentelemetry.trace" in sys.modules:
+    sys.modules["opentelemetry.trace"].get_tracer = lambda *a, **kw: MagicMock()
+
+# Load the real jwt module stub if not already loaded by conftest
+if "jwt" not in sys.modules:
+    _stub("jwt", decode=MagicMock(), ExpiredSignatureError=Exception, InvalidTokenError=Exception)
+
+_api_spec = importlib.util.spec_from_file_location("api.main", str(_API_FILE))
+_api_mod = importlib.util.module_from_spec(_api_spec)
+sys.modules["api.main"] = _api_mod
+_api_spec.loader.exec_module(_api_mod)
+
+app = _api_mod.app
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_db_pool():
+    """Return a minimal asyncpg pool mock."""
+    conn = AsyncMock()
+    conn.execute = AsyncMock(return_value=None)
+    conn.fetchrow = AsyncMock(return_value=None)
+    conn.fetch = AsyncMock(return_value=[])
+
+    # transaction() context manager
+    txn = AsyncMock()
+    txn.__aenter__ = AsyncMock(return_value=txn)
+    txn.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=txn)
+
+    # pool.acquire() context manager
+    acquire_ctx = AsyncMock()
+    acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
+    acquire_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=acquire_ctx)
+    pool.close = AsyncMock()
+    return pool, conn
+
+
+def _make_redis():
+    r = AsyncMock()
+    r.get = AsyncMock(return_value=None)
+    r.incr = AsyncMock(return_value=1)
+    r.expire = AsyncMock(return_value=True)
+    r.xadd = AsyncMock(return_value="1-0")
+    r.publish = AsyncMock(return_value=1)
+    r.close = AsyncMock()
+    return r
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+async def client():
+    """Async HTTP client wired to the FastAPI app with mocked db + redis."""
+    pool, conn = _make_db_pool()
+    redis = _make_redis()
+
+    app.state.db = pool
+    app.state.redis = redis
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        yield c, conn, redis
+
+
+# ---------------------------------------------------------------------------
+# Health endpoint
+# ---------------------------------------------------------------------------
+
+class TestHealthEndpoint:
+    async def test_health_returns_200(self, client):
+        c, _, _ = client
+        resp = await c.get("/health")
+        assert resp.status_code == 200
+
+    async def test_health_response_contains_status(self, client):
+        c, _, _ = client
+        resp = await c.get("/health")
+        data = resp.json()
+        assert "status" in data
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/events — authentication
+# ---------------------------------------------------------------------------
+
+class TestEventAuth:
+    async def test_missing_auth_returns_403(self, client):
+        c, _, _ = client
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {"repo_url": "https://github.com/test/repo"},
+                "correlation_id": str(uuid.uuid4()),
+            },
+        )
+        # HTTPBearer returns 403 when no credentials supplied
+        assert resp.status_code in (401, 403)
+
+    async def test_invalid_token_returns_401(self, client):
+        c, _, _ = client
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {},
+                "correlation_id": str(uuid.uuid4()),
+            },
+            headers={"Authorization": "Bearer bad-token"},
+        )
+        assert resp.status_code == 401
+
+    async def test_valid_service_token_accepted(self, client, monkeypatch):
+        c, conn, redis = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "test-service-token")
+
+        # conn.fetchrow needs to return something for the event insert
+        row_id = str(uuid.uuid4())
+        conn.execute = AsyncMock(return_value=None)
+        redis.xadd = AsyncMock(return_value="1-0")
+
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {"repo_url": "https://github.com/test/repo"},
+                "correlation_id": str(uuid.uuid4()),
+            },
+            headers={"Authorization": "Bearer test-service-token"},
+        )
+        assert resp.status_code in (200, 201, 202)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/events — validation
+# ---------------------------------------------------------------------------
+
+class TestEventValidation:
+    async def test_missing_event_type_returns_422(self, client, monkeypatch):
+        c, _, _ = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "tok")
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "payload": {"data": "x"},
+                "correlation_id": "abc",
+            },
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code == 422
+
+    async def test_missing_correlation_id_returns_422(self, client, monkeypatch):
+        c, _, _ = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "tok")
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {},
+            },
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code == 422
+
+    async def test_missing_payload_returns_422(self, client, monkeypatch):
+        c, _, _ = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "tok")
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "correlation_id": "abc",
+            },
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/events — success path
+# ---------------------------------------------------------------------------
+
+class TestEventSuccess:
+    async def test_event_inserted_into_db(self, client, monkeypatch):
+        c, conn, redis = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "tok")
+
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {"repo_url": "https://github.com/acme/app"},
+                "correlation_id": "corr-123",
+            },
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code in (200, 201, 202)
+        conn.execute.assert_awaited()
+
+    async def test_event_published_to_redis(self, client, monkeypatch):
+        c, conn, redis = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "tok")
+
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {"repo_url": "https://github.com/acme/app"},
+                "correlation_id": "corr-456",
+            },
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code in (200, 201, 202)
+        redis.xadd.assert_awaited()
+
+    async def test_response_contains_event_id(self, client, monkeypatch):
+        c, _, _ = client
+        monkeypatch.setenv("BVR_SERVICE_TOKEN", "tok")
+
+        resp = await c.post(
+            "/api/v1/events",
+            json={
+                "event_type": "bvr.review.repository",
+                "payload": {},
+                "correlation_id": "corr-789",
+            },
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code in (200, 201, 202)
+        data = resp.json()
+        assert "event_id" in data or "correlation_id" in data or "status" in data

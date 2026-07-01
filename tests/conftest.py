@@ -60,8 +60,10 @@ _make_stub("yaml")
 # 2. Register bvr-sdk on sys.path and pre-load the real sub-modules we test
 # ---------------------------------------------------------------------------
 
-SDK_ROOT = "/home/user/bvr-nexus/bvr-sdk"
-WORKERS_ROOT = "/home/user/bvr-nexus"
+from pathlib import Path as _Path
+_REPO_ROOT = _Path(__file__).parent.parent.resolve()
+SDK_ROOT = str(_REPO_ROOT / "bvr-sdk")
+WORKERS_ROOT = str(_REPO_ROOT)
 
 if SDK_ROOT not in sys.path:
     sys.path.insert(0, SDK_ROOT)
@@ -107,5 +109,6 @@ bvr_sdk_pkg.check_policy = AsyncMock(return_value=True)
 bvr_sdk_pkg.ai_gateway_call = AsyncMock(return_value={})
 bvr_sdk_pkg.upload_artifact = AsyncMock(return_value="http://minio/artifact")
 bvr_sdk_pkg.get_registry = MagicMock(return_value=MagicMock())
+bvr_sdk_pkg.get_matcher = MagicMock(return_value=MagicMock())
 
 sys.modules["bvr_sdk"] = bvr_sdk_pkg
