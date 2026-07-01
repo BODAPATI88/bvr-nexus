@@ -3,42 +3,44 @@ BVR API Gateway — FastAPI Application Layer
 Orchestrates between Kestra (orchestration) and BVR Workers (execution).
 """
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
-import uuid
+import asyncio
 import json
 import os
-import redis.asyncio as aioredis
-import asyncpg
+import time
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-# ── Lifespan ──
-
-
-# ── Authentication Middleware ──
-
-from fastapi import Request, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import asyncpg
 import jwt
+import redis.asyncio as aioredis
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from api.services import EventService, RegistryService
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
 
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
     """Validate JWT token and return user info."""
     token = credentials.credentials
 
-    # In production: call Keycloak introspection endpoint
-    # For now: decode locally with Keycloak public key
     try:
-        # Fetch Keycloak public key
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "http://keycloak:8080/realms/bvr",
-                timeout=10.0
-            )
+        import httpx as _httpx
+
+        async with _httpx.AsyncClient() as client:
+            resp = await client.get("http://keycloak:8080/realms/bvr", timeout=10.0)
             if resp.status_code == 200:
                 realm_info = resp.json()
                 public_key = realm_info.get("public_key", "")
@@ -48,216 +50,41 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
                         key=f"-----BEGIN PUBLIC KEY-----\n{public_key}\n-----END PUBLIC KEY-----",
                         algorithms=["RS256"],
                         audience="bvr-api",
-                        options={"verify_exp": True}
+                        options={"verify_exp": True},
                     )
                     return decoded
     except Exception:
         pass
 
-    # Fallback: check for service token — no default; token must be explicitly configured
+    # Fallback: check service token — no default; must be explicitly configured
     service_token = os.getenv("BVR_SERVICE_TOKEN")
     if service_token and token == service_token:
         return {"sub": "bvr-service", "roles": ["bvr-service"]}
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials"
+        detail="Invalid authentication credentials",
     )
+
 
 async def require_role(role: str):
     """Dependency factory for role-based access control."""
+
     async def _check_role(user: dict = Depends(get_current_user)):
         roles = user.get("roles", [])
         if role not in roles and "bvr-admin" not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required role: {role}"
+                detail=f"Required role: {role}",
             )
         return user
+
     return _check_role
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    app.state.redis = await aioredis.from_url(
-        os.getenv("REDIS_URL", "redis://redis:6379"), decode_responses=True
-    )
-    app.state.db = await asyncpg.create_pool(
-        dsn=os.getenv("DATABASE_URL").replace("+asyncpg","")
-    )
-    async with app.state.db.acquire() as conn:
-        await conn.execute(INIT_SQL)
-    yield
-    # Shutdown
-    await app.state.redis.close()
-    await app.state.db.close()
 
-app = FastAPI(
-    title="BVR Nexus API",
-    description="Application layer for BVR workflow orchestration",
-    version="2.0.0",
-    lifespan=lifespan,
-)
-
-
-
-# ── Rate Limiting Middleware ──
-
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-import time
-
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple Redis-based rate limiting."""
-
-    async def dispatch(self, request: Request, call_next):
-        # Skip rate limiting for health checks
-        if request.url.path == "/health":
-            return await call_next(request)
-
-        client_id = request.headers.get("X-API-Key", request.client.host)
-        redis = request.app.state.redis
-
-        # Check rate limit (100 requests per minute per client)
-        key = f"rate_limit:{client_id}"
-        current = await redis.get(key)
-
-        if current and int(current) >= 100:
-            return Response(
-                content='{"detail":"Rate limit exceeded"}',
-                status_code=429,
-                media_type="application/json"
-            )
-
-        await redis.incr(key)
-        await redis.expire(key, 60)
-
-        return await call_next(request)
-
-# Add middleware to app
-app.add_middleware(RateLimitMiddleware)
-
-
-# ── Request Logging Middleware ──
-
-import time
-import uuid
-
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log all requests with correlation IDs and timing."""
-
-    async def dispatch(self, request: Request, call_next):
-        correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-        start_time = time.time()
-
-        # Log request
-        print(f"[REQUEST] {correlation_id} {request.method} {request.url.path} {request.client.host}")
-
-        response = await call_next(request)
-
-        duration = time.time() - start_time
-
-        # Log response
-        print(f"[RESPONSE] {correlation_id} {response.status_code} {duration:.3f}s")
-
-        # Add headers
-        response.headers["X-Correlation-ID"] = correlation_id
-        response.headers["X-Response-Time"] = f"{duration:.3f}s"
-
-        return response
-
-app.add_middleware(RequestLoggingMiddleware)
-
-
-_allowed_origins = [
-    o.strip()
-    for o in os.getenv("API_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-    if o.strip()
-]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ── Models ──
-
-class EventEnvelope(BaseModel):
-    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    event_type: str
-    payload: Dict[str, Any]
-    correlation_id: str
-    source: str = "api"
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    priority: str = "normal"  # low, normal, high, critical
-    user_id: Optional[str] = None
-
-class EventResult(BaseModel):
-    event_id: str
-    status: str  # pending, processing, completed, failed
-    result: Optional[Dict[str, Any]] = None
-    artifact_urls: Optional[List[str]] = None
-    metrics: Optional[Dict[str, Any]] = None
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-class WorkflowDefinition(BaseModel):
-    id: str
-    namespace: str
-    description: str
-    tags: List[str]
-    kestra_workflow_id: str
-
-class WorkerRegistration(BaseModel):
-    worker_id: str
-    capabilities: List[str]
-    health_endpoint: str
-    version: str
-
-class IntegrationManifest(BaseModel):
-    id: str
-    name: str
-    type: str
-    version: str
-    capabilities: List[str]
-    status: str = "active"
-
-class ModelConfig(BaseModel):
-    id: str
-    provider: str
-    model_name: str
-    capabilities: List[str]
-    priority: int
-    fallback: Optional[str] = None
-    cost_per_1k_input: float
-    cost_per_1k_output: float
-
-class PromptTemplate(BaseModel):
-    id: str
-    version: str
-    template: str
-    variables: List[str]
-    model_preference: Optional[str] = None
-
-class PolicyRule(BaseModel):
-    id: str
-    rego_path: str
-    description: str
-    applies_to: List[str]  # event types
-
-class OutcomeMetric(BaseModel):
-    goal_id: str
-    description: str
-    metric: str
-    target: float
-    unit: str
-    current: Optional[float] = None
-    workflow_id: str
-    status: str = "on_track"
-
-# ── Database Init ──
+# ---------------------------------------------------------------------------
+# Database schema
+# ---------------------------------------------------------------------------
 
 INIT_SQL = """
 CREATE TABLE IF NOT EXISTS events (
@@ -342,31 +169,250 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 """
 
-@app.on_event("startup")
-async def init_db():
-    pool = await asyncpg.create_pool(
-        dsn=os.getenv("DATABASE_URL").replace("+asyncpg","")
+# ---------------------------------------------------------------------------
+# Lifespan — pool tuning + service wiring
+# ---------------------------------------------------------------------------
+
+_MAX_PAYLOAD_BYTES = int(os.getenv("BVR_MAX_PAYLOAD_BYTES", str(1 * 1024 * 1024)))  # 1 MB
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.redis = await aioredis.from_url(
+        os.getenv("REDIS_URL", "redis://redis:6379"), decode_responses=True
     )
-    async with pool.acquire() as conn:
+    app.state.db = await asyncpg.create_pool(
+        dsn=os.getenv("DATABASE_URL").replace("+asyncpg", ""),
+        min_size=2,
+        max_size=10,
+        max_inactive_connection_lifetime=300.0,
+    )
+    async with app.state.db.acquire() as conn:
         await conn.execute(INIT_SQL)
-    await pool.close()
 
-# ── Input Validation Schemas ──
+    app.state.event_service = EventService(app.state.db)
+    app.state.registry_service = RegistryService(app.state.db)
 
-from pydantic import BaseModel, validator, Field
-from typing import Dict, Any
+    yield
+
+    await app.state.redis.aclose()
+    await app.state.db.close()
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+app = FastAPI(
+    title="BVR Nexus API",
+    description="Application layer for BVR workflow orchestration",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+# ---------------------------------------------------------------------------
+# Middleware
+# ---------------------------------------------------------------------------
+
+
+class PayloadSizeMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose declared Content-Length exceeds BVR_MAX_PAYLOAD_BYTES (1 MB)."""
+
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_PAYLOAD_BYTES:
+            return Response(
+                content='{"detail":"Request body too large"}',
+                status_code=413,
+                media_type="application/json",
+            )
+        return await call_next(request)
+
+
+class ContentTypeMiddleware(BaseHTTPMiddleware):
+    """Require application/json Content-Type on mutating requests."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("POST", "PUT", "PATCH"):
+            ct = request.headers.get("content-type", "")
+            if not ct.startswith("application/json"):
+                return Response(
+                    content='{"detail":"Content-Type must be application/json"}',
+                    status_code=415,
+                    media_type="application/json",
+                )
+        return await call_next(request)
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple Redis-based rate limiting (100 req/min per client)."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        client_id = request.headers.get("X-API-Key", request.client.host)
+        redis = request.app.state.redis
+        key = f"rate_limit:{client_id}"
+        current = await redis.get(key)
+
+        if current and int(current) >= 100:
+            return Response(
+                content='{"detail":"Rate limit exceeded"}',
+                status_code=429,
+                media_type="application/json",
+            )
+
+        await redis.incr(key)
+        await redis.expire(key, 60)
+        return await call_next(request)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log all requests with correlation IDs and timing."""
+
+    async def dispatch(self, request: Request, call_next):
+        correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+        start_time = time.time()
+        print(
+            f"[REQUEST] {correlation_id} {request.method} {request.url.path} {request.client.host}"
+        )
+        response = await call_next(request)
+        duration = time.time() - start_time
+        print(f"[RESPONSE] {correlation_id} {response.status_code} {duration:.3f}s")
+        response.headers["X-Correlation-ID"] = correlation_id
+        response.headers["X-Response-Time"] = f"{duration:.3f}s"
+        return response
+
+
+# Middleware registration order: outermost (first added) wraps all inner ones.
+# PayloadSize and ContentType must run before route handlers touch the body.
+app.add_middleware(PayloadSizeMiddleware)
+app.add_middleware(ContentTypeMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+
+_allowed_origins = [
+    o.strip()
+    for o in os.getenv("API_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
+
+class EventEnvelope(BaseModel):
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: str
+    payload: Dict[str, Any]
+    correlation_id: str
+    source: str = "api"
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    priority: str = "normal"
+    user_id: Optional[str] = None
+
+
+class EventResult(BaseModel):
+    event_id: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    artifact_urls: Optional[List[str]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class WorkflowDefinition(BaseModel):
+    id: str
+    namespace: str
+    description: str
+    tags: List[str]
+    kestra_workflow_id: str
+
+
+class WorkerRegistration(BaseModel):
+    worker_id: str
+    capabilities: List[str]
+    health_endpoint: str
+    version: str
+
+
+class IntegrationManifest(BaseModel):
+    id: str
+    name: str
+    type: str
+    version: str
+    capabilities: List[str]
+    status: str = "active"
+
+
+class ModelConfig(BaseModel):
+    id: str
+    provider: str
+    model_name: str
+    capabilities: List[str]
+    priority: int
+    fallback: Optional[str] = None
+    cost_per_1k_input: float
+    cost_per_1k_output: float
+
+
+class PromptTemplate(BaseModel):
+    id: str
+    version: str
+    template: str
+    variables: List[str]
+    model_preference: Optional[str] = None
+
+
+class PolicyRule(BaseModel):
+    id: str
+    rego_path: str
+    description: str
+    applies_to: List[str]
+
+
+class OutcomeMetric(BaseModel):
+    goal_id: str
+    description: str
+    metric: str
+    target: float
+    unit: str
+    current: Optional[float] = None
+    workflow_id: str
+    status: str = "on_track"
+
+
+# ---------------------------------------------------------------------------
+# Payload validation schemas
+# ---------------------------------------------------------------------------
+
+from pydantic import validator  # noqa: E402
+
 
 class ReviewEventPayload(BaseModel):
-    repo_url: str = Field(..., pattern=r'^https?://.*')
+    repo_url: str = Field(..., pattern=r"^https?://.*")
     branch: str = Field(default="main", min_length=1, max_length=100)
+
 
 class ResearchEventPayload(BaseModel):
     topic: str = Field(..., min_length=3, max_length=500)
-    depth: str = Field(default="standard", pattern=r'^(quick|standard|deep)$')
+    depth: str = Field(default="standard", pattern=r"^(quick|standard|deep)$")
+
 
 class AchieveEventPayload(BaseModel):
     resume_content: str = Field(..., min_length=50, max_length=50000)
     target_role: str = Field(default="Software Engineer", min_length=2, max_length=100)
+
 
 EVENT_PAYLOAD_SCHEMAS = {
     "review.repository": ReviewEventPayload,
@@ -374,45 +420,43 @@ EVENT_PAYLOAD_SCHEMAS = {
     "achieve.resume-optimization": AchieveEventPayload,
 }
 
+
 def validate_event_payload(event_type: str, payload: dict) -> dict:
-    """Validate event payload against known schema."""
     schema_class = EVENT_PAYLOAD_SCHEMAS.get(event_type)
     if schema_class:
         validated = schema_class(**payload)
-        return validated.dict()
-    return payload  # Unknown event types pass through (extensibility)
+        return validated.model_dump()
+    return payload
 
-# ── Event Endpoints ──
+
+# ---------------------------------------------------------------------------
+# Event endpoints
+# ---------------------------------------------------------------------------
+
 
 @app.post("/api/v1/events", response_model=EventEnvelope)
 async def emit_event(
     event: EventEnvelope,
     background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
 ):
-    """
-    Receive an event from Kestra (or any source), store it,
-    and route it to the appropriate worker via Redis Streams.
-    """
-    # Validate payload
+    """Receive, validate, store, and route an event to BVR workers."""
     try:
         event.payload = validate_event_payload(event.event_type, event.payload)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid payload: {e}")
-    
-    # Store event
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO events (event_id, event_type, payload, correlation_id, source, priority, user_id, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-            """,
-            event.event_id, event.event_type, json.dumps(event.payload),
-            event.correlation_id, event.source, event.priority, event.user_id
-        )
 
-    # Publish to Redis Stream for worker consumption
+    svc: EventService = app.state.event_service
+    await svc.store_event(
+        event_id=event.event_id,
+        event_type=event.event_type,
+        payload=event.payload,
+        correlation_id=event.correlation_id,
+        source=event.source,
+        priority=event.priority,
+        user_id=event.user_id,
+    )
+
     redis = app.state.redis
     await redis.xadd(
         "bvr:events",
@@ -422,26 +466,17 @@ async def emit_event(
             "payload": json.dumps(event.payload),
             "correlation_id": event.correlation_id,
             "priority": event.priority,
-        }
+        },
     )
 
     return event
 
+
 @app.get("/api/v1/events/{event_id}/result", response_model=EventResult)
 async def get_event_result(event_id: str):
     """Get the result of an event execution."""
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT e.event_id, e.status, r.result, r.artifact_urls, r.metrics, e.timestamp as created_at, r.updated_at
-            FROM events e
-            LEFT JOIN event_results r ON e.event_id = r.event_id
-            WHERE e.event_id = $1
-            """,
-            event_id
-        )
-
+    svc: EventService = app.state.event_service
+    row = await svc.get_result(event_id)
     if not row:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -449,39 +484,37 @@ async def get_event_result(event_id: str):
         event_id=str(row["event_id"]),
         status=row["status"],
         result=json.loads(row["result"]) if isinstance(row["result"], str) else row["result"],
-        artifact_urls=json.loads(row["artifact_urls"]) if isinstance(row["artifact_urls"], str) else row["artifact_urls"],
-        metrics=json.loads(row["metrics"]) if isinstance(row["metrics"], str) else row["metrics"],
+        artifact_urls=(
+            json.loads(row["artifact_urls"])
+            if isinstance(row["artifact_urls"], str)
+            else row["artifact_urls"]
+        ),
+        metrics=(
+            json.loads(row["metrics"]) if isinstance(row["metrics"], str) else row["metrics"]
+        ),
         created_at=row["created_at"],
-        updated_at=row["updated_at"]
+        updated_at=row["updated_at"],
     )
+
 
 @app.post("/api/v1/events/{event_id}/result")
 async def post_event_result(event_id: str, result: EventResult):
     """Workers post results back to the API."""
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                """
-                INSERT INTO event_results (event_id, result, artifact_urls, metrics, updated_at)
-                VALUES ($1, $2, $3, $4, NOW())
-                ON CONFLICT (event_id) DO UPDATE SET
-                    result = EXCLUDED.result,
-                    artifact_urls = EXCLUDED.artifact_urls,
-                    metrics = EXCLUDED.metrics,
-                    updated_at = NOW()
-                """,
-                event_id, json.dumps(result.result) if result.result else None,
-                json.dumps(result.artifact_urls) if result.artifact_urls else None,
-                json.dumps(result.metrics) if result.metrics else None
-            )
-            await conn.execute(
-                "UPDATE events SET status = $1 WHERE event_id = $2",
-                result.status, event_id
-            )
+    svc: EventService = app.state.event_service
+    await svc.post_result(
+        event_id=event_id,
+        status=result.status,
+        result=result.result,
+        artifact_urls=result.artifact_urls,
+        metrics=result.metrics,
+    )
     return {"status": "ok"}
 
-# ── Registry Endpoints ──
+
+# ---------------------------------------------------------------------------
+# Registry endpoints
+# ---------------------------------------------------------------------------
+
 
 @app.get("/api/v1/registry/workflows", response_model=List[WorkflowDefinition])
 async def list_workflows():
@@ -492,115 +525,107 @@ async def list_workflows():
             namespace="bvr.devops",
             description="Review repository for architecture issues",
             tags=["review", "architecture"],
-            kestra_workflow_id="bvr.review.repository"
+            kestra_workflow_id="bvr.review.repository",
         ),
         WorkflowDefinition(
             id="bvr.research.topic",
             namespace="bvr.knowledge",
             description="Research topic and produce summary",
             tags=["research", "summary"],
-            kestra_workflow_id="bvr.research.topic"
+            kestra_workflow_id="bvr.research.topic",
         ),
         WorkflowDefinition(
             id="bvr.achieve.resume-optimization",
             namespace="bvr.career",
             description="Optimize resume for ATS",
             tags=["career", "ats"],
-            kestra_workflow_id="bvr.achieve.resume-optimization"
+            kestra_workflow_id="bvr.achieve.resume-optimization",
         ),
     ]
+
 
 @app.post("/api/v1/registry/workers")
 async def register_worker(worker: WorkerRegistration):
     """Workers register their capabilities."""
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO workers (worker_id, capabilities, health_endpoint, version, last_seen, status)
-            VALUES ($1, $2, $3, $4, NOW(), 'active')
-            ON CONFLICT (worker_id) DO UPDATE SET
-                capabilities = EXCLUDED.capabilities,
-                health_endpoint = EXCLUDED.health_endpoint,
-                version = EXCLUDED.version,
-                last_seen = NOW()
-            """,
-            worker.worker_id, worker.capabilities, worker.health_endpoint, worker.version
-        )
+    svc: RegistryService = app.state.registry_service
+    await svc.register_worker(
+        worker_id=worker.worker_id,
+        capabilities=worker.capabilities,
+        health_endpoint=worker.health_endpoint,
+        version=worker.version,
+    )
     return {"status": "registered", "worker_id": worker.worker_id}
+
 
 @app.get("/api/v1/registry/workers")
 async def list_workers():
     """List all registered workers."""
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM workers")
-    return [dict(r) for r in rows]
+    svc: RegistryService = app.state.registry_service
+    return await svc.list_workers()
+
 
 @app.post("/api/v1/registry/integrations")
 async def register_integration(integration: IntegrationManifest):
     """Register a new integration plugin."""
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO integrations (id, name, type, version, capabilities, status)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (id) DO UPDATE SET
-                name = EXCLUDED.name,
-                version = EXCLUDED.version,
-                capabilities = EXCLUDED.capabilities,
-                status = EXCLUDED.status
-            """,
-            integration.id, integration.name, integration.type,
-            integration.version, integration.capabilities, integration.status
-        )
+    svc: RegistryService = app.state.registry_service
+    await svc.register_integration(
+        id=integration.id,
+        name=integration.name,
+        type_=integration.type,
+        version=integration.version,
+        capabilities=integration.capabilities,
+        status=integration.status,
+    )
     return {"status": "registered", "integration_id": integration.id}
+
 
 @app.get("/api/v1/registry/integrations")
 async def list_integrations():
     """List all registered integrations."""
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM integrations")
-    return [dict(r) for r in rows]
+    svc: RegistryService = app.state.registry_service
+    return await svc.list_integrations()
 
-# ── AI Gateway Endpoints ──
+
+# ---------------------------------------------------------------------------
+# AI Gateway endpoints
+# ---------------------------------------------------------------------------
+
 
 @app.post("/api/v1/ai-gateway/models")
 async def register_model(model: ModelConfig):
-    """Register an AI model provider."""
     pool = app.state.db
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO models (id, provider, model_name, capabilities, priority, fallback, cost_per_1k_input, cost_per_1k_output)
+            INSERT INTO models
+                (id, provider, model_name, capabilities, priority, fallback,
+                 cost_per_1k_input, cost_per_1k_output)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO UPDATE SET
-                provider = EXCLUDED.provider,
-                model_name = EXCLUDED.model_name,
-                capabilities = EXCLUDED.capabilities,
-                priority = EXCLUDED.priority,
-                fallback = EXCLUDED.fallback,
-                cost_per_1k_input = EXCLUDED.cost_per_1k_input,
+                provider           = EXCLUDED.provider,
+                model_name         = EXCLUDED.model_name,
+                capabilities       = EXCLUDED.capabilities,
+                priority           = EXCLUDED.priority,
+                fallback           = EXCLUDED.fallback,
+                cost_per_1k_input  = EXCLUDED.cost_per_1k_input,
                 cost_per_1k_output = EXCLUDED.cost_per_1k_output
             """,
             model.id, model.provider, model.model_name, model.capabilities,
-            model.priority, model.fallback, model.cost_per_1k_input, model.cost_per_1k_output
+            model.priority, model.fallback, model.cost_per_1k_input, model.cost_per_1k_output,
         )
     return {"status": "registered", "model_id": model.id}
 
+
 @app.get("/api/v1/ai-gateway/models")
 async def list_models():
-    """List all registered AI models."""
     pool = app.state.db
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM models ORDER BY priority")
     return [dict(r) for r in rows]
 
+
 @app.post("/api/v1/ai-gateway/prompts")
 async def register_prompt(prompt: PromptTemplate):
-    """Register a prompt template."""
     pool = app.state.db
     async with pool.acquire() as conn:
         await conn.execute(
@@ -608,20 +633,24 @@ async def register_prompt(prompt: PromptTemplate):
             INSERT INTO prompts (id, version, template, variables, model_preference)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (id) DO UPDATE SET
-                version = EXCLUDED.version,
-                template = EXCLUDED.template,
-                variables = EXCLUDED.variables,
+                version          = EXCLUDED.version,
+                template         = EXCLUDED.template,
+                variables        = EXCLUDED.variables,
                 model_preference = EXCLUDED.model_preference
             """,
-            prompt.id, prompt.version, prompt.template, prompt.variables, prompt.model_preference
+            prompt.id, prompt.version, prompt.template,
+            prompt.variables, prompt.model_preference,
         )
     return {"status": "registered", "prompt_id": prompt.id}
 
-# ── Policy Endpoints ──
+
+# ---------------------------------------------------------------------------
+# Policy endpoints
+# ---------------------------------------------------------------------------
+
 
 @app.post("/api/v1/policies")
 async def register_policy(policy: PolicyRule):
-    """Register a policy rule."""
     pool = app.state.db
     async with pool.acquire() as conn:
         await conn.execute(
@@ -629,52 +658,56 @@ async def register_policy(policy: PolicyRule):
             INSERT INTO policies (id, rego_path, description, applies_to)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (id) DO UPDATE SET
-                rego_path = EXCLUDED.rego_path,
+                rego_path   = EXCLUDED.rego_path,
                 description = EXCLUDED.description,
-                applies_to = EXCLUDED.applies_to
+                applies_to  = EXCLUDED.applies_to
             """,
-            policy.id, policy.rego_path, policy.description, policy.applies_to
+            policy.id, policy.rego_path, policy.description, policy.applies_to,
         )
     return {"status": "registered", "policy_id": policy.id}
 
-# ── Outcome Endpoints ──
+
+# ---------------------------------------------------------------------------
+# Outcome endpoints
+# ---------------------------------------------------------------------------
+
 
 @app.post("/api/v1/outcomes")
 async def register_outcome(outcome: OutcomeMetric):
-    """Register a measurable outcome goal."""
     pool = app.state.db
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO outcomes (goal_id, description, metric, target, unit, current, workflow_id, status)
+            INSERT INTO outcomes
+                (goal_id, description, metric, target, unit, current, workflow_id, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (goal_id) DO UPDATE SET
                 description = EXCLUDED.description,
-                metric = EXCLUDED.metric,
-                target = EXCLUDED.target,
-                unit = EXCLUDED.unit,
-                current = EXCLUDED.current,
+                metric      = EXCLUDED.metric,
+                target      = EXCLUDED.target,
+                unit        = EXCLUDED.unit,
+                current     = EXCLUDED.current,
                 workflow_id = EXCLUDED.workflow_id,
-                status = EXCLUDED.status
+                status      = EXCLUDED.status
             """,
             outcome.goal_id, outcome.description, outcome.metric, outcome.target,
-            outcome.unit, outcome.current, outcome.workflow_id, outcome.status
+            outcome.unit, outcome.current, outcome.workflow_id, outcome.status,
         )
     return {"status": "registered", "goal_id": outcome.goal_id}
 
+
 @app.get("/api/v1/outcomes")
 async def list_outcomes():
-    """List all measurable outcomes."""
     pool = app.state.db
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM outcomes")
     return [dict(r) for r in rows]
 
-# ── Health ──
 
+# ---------------------------------------------------------------------------
+# Webhook endpoints (Kestra integration)
+# ---------------------------------------------------------------------------
 
-
-# ── Webhook Callback Endpoints (for Kestra integration) ──
 
 class WebhookCallback(BaseModel):
     correlation_id: str
@@ -684,57 +717,36 @@ class WebhookCallback(BaseModel):
     artifact_urls: Optional[List[str]] = None
     metrics: Optional[Dict[str, Any]] = None
 
+
 @app.post("/api/v1/webhooks/kestra")
 async def kestra_webhook(callback: WebhookCallback):
-    """
-    Webhook endpoint for workers to notify Kestra of completion.
-    Workers call this instead of Kestra polling.
-    """
-    # Store result
-    pool = app.state.db
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                """
-                INSERT INTO event_results (event_id, result, artifact_urls, metrics, updated_at)
-                VALUES ($1, $2, $3, $4, NOW())
-                ON CONFLICT (event_id) DO UPDATE SET
-                    result = EXCLUDED.result,
-                    artifact_urls = EXCLUDED.artifact_urls,
-                    metrics = EXCLUDED.metrics,
-                    updated_at = NOW()
-                """,
-                callback.correlation_id,
-                json.dumps(callback.result) if callback.result else None,
-                json.dumps(callback.artifact_urls) if callback.artifact_urls else None,
-                json.dumps(callback.metrics) if callback.metrics else None
-            )
-            await conn.execute(
-                "UPDATE events SET status = $1 WHERE correlation_id = $2",
-                callback.status, callback.correlation_id
-            )
+    """Webhook endpoint for workers to notify Kestra of completion."""
+    svc: EventService = app.state.event_service
+    await svc.post_webhook_result(
+        correlation_id=callback.correlation_id,
+        status=callback.status,
+        result=callback.result,
+        artifact_urls=callback.artifact_urls,
+        metrics=callback.metrics,
+    )
 
-    # Notify any waiting Kestra workflows via Redis pub/sub
     redis = app.state.redis
     await redis.publish(
         f"bvr:webhook:{callback.correlation_id}",
-        json.dumps(callback.model_dump())
+        json.dumps(callback.model_dump()),
     )
 
     return {"status": "received", "correlation_id": callback.correlation_id}
 
+
 @app.get("/api/v1/webhooks/kestra/wait/{correlation_id}")
 async def wait_for_webhook(correlation_id: str, timeout: int = 60):
-    """
-    Long-polling endpoint for Kestra to wait for worker completion.
-    Returns immediately when webhook is received, or times out.
-    """
+    """Long-polling endpoint for Kestra to wait for worker completion."""
     redis = app.state.redis
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"bvr:webhook:{correlation_id}")
 
     try:
-        # Wait for message with timeout
         async for message in pubsub.listen():
             if message["type"] == "message":
                 data = json.loads(message["data"])
@@ -745,39 +757,42 @@ async def wait_for_webhook(correlation_id: str, timeout: int = 60):
         await pubsub.unsubscribe(f"bvr:webhook:{correlation_id}")
 
 
+# ---------------------------------------------------------------------------
+# Approval system endpoints
+# ---------------------------------------------------------------------------
 
-# ── Approval System Endpoints ──
 
 class ApprovalRequest(BaseModel):
     approval_id: str
     action: str
     resource: str
     approvers: List[str]
-    status: str = "pending"  # pending, approved, denied, expired
+    status: str = "pending"
     created_at: str
     expires_at: str
     approved_by: Optional[str] = None
     denied_by: Optional[str] = None
     approved_at: Optional[str] = None
 
+
 @app.post("/api/v1/approvals")
 async def create_approval(request: ApprovalRequest):
-    """Create an approval request for human-in-the-loop gates."""
     pool = app.state.db
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO approvals (approval_id, action, resource, approvers, status, created_at, expires_at)
+            INSERT INTO approvals
+                (approval_id, action, resource, approvers, status, created_at, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             request.approval_id, request.action, request.resource,
-            request.approvers, request.status, request.created_at, request.expires_at
+            request.approvers, request.status, request.created_at, request.expires_at,
         )
     return {"status": "created", "approval_id": request.approval_id}
 
+
 @app.get("/api/v1/approvals/{approval_id}")
 async def get_approval(approval_id: str):
-    """Get approval status by ID."""
     pool = app.state.db
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -787,9 +802,9 @@ async def get_approval(approval_id: str):
         raise HTTPException(status_code=404, detail="Approval not found")
     return dict(row)
 
+
 @app.post("/api/v1/approvals/{approval_id}/approve")
 async def approve_request(approval_id: str, approver: str):
-    """Approve a pending request."""
     pool = app.state.db
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -801,20 +816,19 @@ async def approve_request(approval_id: str, approver: str):
             raise HTTPException(status_code=400, detail="Approval already processed")
         if approver not in row["approvers"]:
             raise HTTPException(status_code=403, detail="Not an authorized approver")
-
         await conn.execute(
             """
-            UPDATE approvals 
+            UPDATE approvals
             SET status = 'approved', approved_by = $1, approved_at = NOW()
             WHERE approval_id = $2
             """,
-            approver, approval_id
+            approver, approval_id,
         )
     return {"status": "approved", "approval_id": approval_id}
 
+
 @app.post("/api/v1/approvals/{approval_id}/deny")
 async def deny_request(approval_id: str, approver: str):
-    """Deny a pending request."""
     pool = app.state.db
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -824,48 +838,47 @@ async def deny_request(approval_id: str, approver: str):
             raise HTTPException(status_code=404, detail="Approval not found")
         if row["status"] != "pending":
             raise HTTPException(status_code=400, detail="Approval already processed")
-
         await conn.execute(
             """
-            UPDATE approvals 
+            UPDATE approvals
             SET status = 'denied', denied_by = $1
             WHERE approval_id = $2
             """,
-            approver, approval_id
+            approver, approval_id,
         )
     return {"status": "denied", "approval_id": approval_id}
 
+
 @app.get("/api/v1/approvals")
 async def list_approvals(status: Optional[str] = None):
-    """List all approval requests, optionally filtered by status."""
     pool = app.state.db
     async with pool.acquire() as conn:
         if status:
             rows = await conn.fetch(
-                "SELECT * FROM approvals WHERE status = $1 ORDER BY created_at DESC",
-                status
+                "SELECT * FROM approvals WHERE status = $1 ORDER BY created_at DESC", status
             )
         else:
-            rows = await conn.fetch(
-                "SELECT * FROM approvals ORDER BY created_at DESC"
-            )
+            rows = await conn.fetch("SELECT * FROM approvals ORDER BY created_at DESC")
     return [dict(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Capability registry endpoints
+# ---------------------------------------------------------------------------
 
-# ── Capability Registry Endpoints ──
 
 @app.get("/api/v1/capabilities")
 async def list_capabilities():
-    """List all capabilities from the Constitution."""
     from bvr_sdk import get_matcher
+
     matcher = get_matcher()
     return matcher.list_capabilities()
 
+
 @app.get("/api/v1/capabilities/{capability_id}/providers")
 async def get_capability_providers(capability_id: str):
-    """Get all providers for a capability, ordered by priority."""
-    from bvr_sdk import get_matcher, CapabilityNotFound
+    from bvr_sdk import CapabilityNotFound, get_matcher
+
     matcher = get_matcher()
     try:
         providers = matcher.resolve_with_fallback(capability_id)
@@ -883,10 +896,11 @@ async def get_capability_providers(capability_id: str):
     except CapabilityNotFound:
         raise HTTPException(status_code=404, detail=f"Capability not found: {capability_id}")
 
+
 @app.post("/api/v1/capabilities/{capability_id}/resolve")
 async def resolve_capability(capability_id: str, workflow_id: Optional[str] = None):
-    """Resolve a capability to the best provider (for testing)."""
-    from bvr_sdk import get_matcher, CapabilityNotFound, NoHealthyProvider
+    from bvr_sdk import CapabilityNotFound, NoHealthyProvider, get_matcher
+
     matcher = get_matcher()
     try:
         provider = matcher.resolve(capability_id, workflow_id=workflow_id)
@@ -897,24 +911,32 @@ async def resolve_capability(capability_id: str, workflow_id: Optional[str] = No
                 "name": provider.name,
                 "priority": provider.priority,
                 "healthy": provider.healthy,
-            }
+            },
         }
     except CapabilityNotFound:
         raise HTTPException(status_code=404, detail=f"Capability not found: {capability_id}")
     except NoHealthyProvider:
         raise HTTPException(status_code=503, detail=f"No healthy providers for: {capability_id}")
 
+
 @app.post("/api/v1/providers/{provider_id}/health")
 async def update_provider_health(provider_id: str, healthy: bool):
-    """Update health status of a provider (called by health checker)."""
     from bvr_sdk import get_matcher
+
     matcher = get_matcher()
     matcher.update_health(provider_id, healthy)
     return {"status": "updated", "provider_id": provider_id, "healthy": healthy}
 
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "bvr-api", "version": "2.0.0"}
+
 
 @app.get("/")
 async def root():
@@ -928,5 +950,5 @@ async def root():
             "ai_gateway": "/api/v1/ai-gateway",
             "policies": "/api/v1/policies",
             "outcomes": "/api/v1/outcomes",
-        }
+        },
     }

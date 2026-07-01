@@ -101,6 +101,11 @@ bvr_sdk_pkg.EventEnvelope = events_mod.EventEnvelope
 bvr_sdk_pkg.emit_event = events_mod.emit_event
 bvr_sdk_pkg.subscribe = events_mod.subscribe
 bvr_sdk_pkg.wait_for_event = events_mod.wait_for_event
+# DLQ helpers — stubbed so worker tests don't need a live Redis;
+# the real implementations are tested directly in tests/sdk/test_dlq.py.
+bvr_sdk_pkg.track_failure = AsyncMock(return_value=1)
+bvr_sdk_pkg.clear_failure_counter = AsyncMock(return_value=None)
+bvr_sdk_pkg.send_to_dlq = AsyncMock(return_value=None)
 bvr_sdk_pkg.register_worker = registry_mod.register_worker
 
 # Remaining symbols BaseWorker imports — stub as no-ops

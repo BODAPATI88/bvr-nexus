@@ -3,7 +3,10 @@ BVR SDK — Standardized interface for all BVR workers.
 Every worker imports from here.
 """
 
-from .events import EventEnvelope, emit_event, subscribe, wait_for_event
+from .events import (
+    EventEnvelope, emit_event, subscribe, wait_for_event,
+    track_failure, clear_failure_counter, send_to_dlq,
+)
 from .auth import get_token, verify_permission
 from .storage import upload_artifact, download_artifact, list_artifacts
 from .ai import ai_gateway_call, track_tokens, cache_response
@@ -20,6 +23,7 @@ __version__ = "2.0.0"
 __all__ = [
     # Events
     "EventEnvelope", "emit_event", "subscribe", "wait_for_event",
+    "track_failure", "clear_failure_counter", "send_to_dlq",
     # Auth
     "get_token", "verify_permission",
     # Storage
