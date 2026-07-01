@@ -20,7 +20,8 @@ import pytest
 # Must happen at import time so the module is available for all fixtures.
 # ---------------------------------------------------------------------------
 
-_SDK_ROOT = "/home/user/bvr-nexus/bvr-sdk"
+from pathlib import Path as _Path
+_SDK_ROOT = str(_Path(__file__).parent.parent.parent.resolve() / "bvr-sdk")
 if _SDK_ROOT not in sys.path:
     sys.path.insert(0, _SDK_ROOT)
 

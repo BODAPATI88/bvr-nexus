@@ -60,8 +60,10 @@ _make_stub("yaml")
 # 2. Register bvr-sdk on sys.path and pre-load the real sub-modules we test
 # ---------------------------------------------------------------------------
 
-SDK_ROOT = "/home/user/bvr-nexus/bvr-sdk"
-WORKERS_ROOT = "/home/user/bvr-nexus"
+from pathlib import Path as _Path
+_REPO_ROOT = _Path(__file__).parent.parent.resolve()
+SDK_ROOT = str(_REPO_ROOT / "bvr-sdk")
+WORKERS_ROOT = str(_REPO_ROOT)
 
 if SDK_ROOT not in sys.path:
     sys.path.insert(0, SDK_ROOT)
