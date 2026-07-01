@@ -112,10 +112,14 @@ async def subscribe(
                             continue
                         try:
                             await handler(event)
-                            await r.xack("bvr:events", consumer_group, msg_id)
                         except Exception as e:
-                            # Log error, don't ack — message will be redelivered
                             print(f"Error processing event {event.event_id}: {e}")
+                        finally:
+                            # Always ACK — event status is tracked in postgres,
+                            # not in the Redis PEL. Leaving messages unACK'd causes
+                            # permanent PEL buildup since BaseWorker._handle_event
+                            # already catches all errors internally.
+                            await r.xack("bvr:events", consumer_group, msg_id)
     finally:
         await r.close()
 
