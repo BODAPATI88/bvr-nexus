@@ -7,14 +7,15 @@ metadata:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  backoffLimit: 10
-  activeDeadlineSeconds: 300
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
   template:
     spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
           image: pgvector/pgvector:pg16
+          imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
               valueFrom:
