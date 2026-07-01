@@ -13,75 +13,16 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import asyncpg
-import jwt
 import redis.asyncio as aioredis
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from api.auth import get_current_user, require_role, security  # noqa: F401
 from api.middleware import ContentTypeMiddleware, PayloadSizeMiddleware
 from api.services import EventService, RegistryService
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
-
-security = HTTPBearer()
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-):
-    """Validate JWT token and return user info."""
-    token = credentials.credentials
-
-    try:
-        import httpx as _httpx
-
-        async with _httpx.AsyncClient() as client:
-            resp = await client.get("http://keycloak:8080/realms/bvr", timeout=10.0)
-            if resp.status_code == 200:
-                realm_info = resp.json()
-                public_key = realm_info.get("public_key", "")
-                if public_key:
-                    decoded = jwt.decode(
-                        token,
-                        key=f"-----BEGIN PUBLIC KEY-----\n{public_key}\n-----END PUBLIC KEY-----",
-                        algorithms=["RS256"],
-                        audience="bvr-api",
-                        options={"verify_exp": True},
-                    )
-                    return decoded
-    except Exception:
-        pass
-
-    # Fallback: check service token — no default; must be explicitly configured
-    service_token = os.getenv("BVR_SERVICE_TOKEN")
-    if service_token and token == service_token:
-        return {"sub": "bvr-service", "roles": ["bvr-service"]}
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-    )
-
-
-async def require_role(role: str):
-    """Dependency factory for role-based access control."""
-
-    async def _check_role(user: dict = Depends(get_current_user)):
-        roles = user.get("roles", [])
-        if role not in roles and "bvr-admin" not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required role: {role}",
-            )
-        return user
-
-    return _check_role
 
 
 # ---------------------------------------------------------------------------

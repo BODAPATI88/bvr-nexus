@@ -1,8 +1,23 @@
+# Traefik v3 static configuration (file provider)
+# Mounted at /etc/traefik/traefik.yml inside the container.
+#
+# C4 remediation: TLS enabled on :443 with HTTP→HTTPS permanent redirect on :80.
+# Traefik generates a self-signed cert automatically when no explicit cert is
+# provided — replace tls:{} with a certResolver block for ACME in production.
+
 entryPoints:
   web:
     address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
   websecure:
     address: ":443"
+    http:
+      tls: {}
   traefik:
     address: ":8080"
 
@@ -21,21 +36,24 @@ http:
       rule: "Host(`kestra.localhost`)"
       service: kestra
       entryPoints:
-        - web
+        - websecure
+      tls: {}
 
     bvr-api:
       rule: "Host(`api.localhost`)"
       service: bvr-api
       entryPoints:
-        - web
+        - websecure
       middlewares:
         - rate-limit
+      tls: {}
 
     grafana:
       rule: "Host(`grafana.localhost`)"
       service: grafana
       entryPoints:
-        - web
+        - websecure
+      tls: {}
 
     # Dashboard accessible at http://localhost:8082/dashboard/ with BasicAuth.
     # TRAEFIK_DASHBOARD_USERS format: htpasswd -nb admin pass | sed 's/\$/\$\$/g'

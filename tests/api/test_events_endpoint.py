@@ -113,6 +113,15 @@ _middleware_mod = importlib.util.module_from_spec(_middleware_spec)
 _middleware_spec.loader.exec_module(_middleware_mod)
 sys.modules["api.middleware"] = _middleware_mod
 
+# Load the real api.auth so the import inside api/main.py works.
+# jwt is already stubbed above; httpx is imported lazily inside the function.
+_auth_spec = importlib.util.spec_from_file_location(
+    "api.auth", str(_REPO_ROOT / "api" / "auth.py")
+)
+_auth_mod = importlib.util.module_from_spec(_auth_spec)
+_auth_spec.loader.exec_module(_auth_mod)
+sys.modules["api.auth"] = _auth_mod
+
 _api_spec = importlib.util.spec_from_file_location("api.main", str(_API_FILE))
 _api_mod = importlib.util.module_from_spec(_api_spec)
 sys.modules["api.main"] = _api_mod
