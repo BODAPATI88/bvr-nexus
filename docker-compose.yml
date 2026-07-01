@@ -363,11 +363,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 8G
+          cpus: '2.0'
+          memory: 4G
         reservations:
           cpus: '0.5'
-          memory: 1G
+          memory: 512M
     networks:
       - bvr-network
 
