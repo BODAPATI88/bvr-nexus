@@ -82,10 +82,6 @@ docker compose up -d prometheus grafana jaeger loki
 echo "🌐 Starting ingress..."
 docker compose up -d traefik
 
-# Start AI layer
-echo "🧠 Starting AI layer..."
-docker compose up -d ollama
-
 # Initialize MinIO
 echo "📁 Initializing MinIO..."
 docker compose up minio-init
