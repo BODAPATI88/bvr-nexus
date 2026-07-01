@@ -117,8 +117,7 @@ async def operations(request: Request):
          "prom_up": redis_up},
     ]
 
-    return templates.TemplateResponse("operations.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "operations.html", {
         "page": "ops",
         "version": VERSION,
         "refreshed": _now_utc(),
@@ -160,8 +159,7 @@ async def ceo_dashboard(request: Request):
     active_integrations = len(integrations) if isinstance(integrations, list) else 0
     active_models = len(models) if isinstance(models, list) else 0
 
-    return templates.TemplateResponse("ceo.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "ceo.html", {
         "page": "ceo",
         "version": VERSION,
         "refreshed": _now_utc(),

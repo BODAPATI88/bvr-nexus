@@ -1,4 +1,16 @@
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: traefik-acme
+  namespace: bvr-nexus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 128Mi
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: traefik
@@ -71,10 +83,24 @@ spec:
             - --entrypoints.web.address=:80
             - --entrypoints.websecure.address=:443
             - --entrypoints.traefik.address=:8080
+            # Redirect all HTTP → HTTPS (Traefik serves ACME challenge before redirect)
+            - --entrypoints.web.http.redirections.entrypoint.to=websecure
+            - --entrypoints.web.http.redirections.entrypoint.scheme=https
+            - --entrypoints.web.http.redirections.entrypoint.permanent=true
+            # Let's Encrypt ACME via HTTP-01 challenge
+            - --certificatesresolvers.le.acme.email=$(ACME_EMAIL)
+            - --certificatesresolvers.le.acme.storage=/acme/acme.json
+            - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
             - --api.dashboard=true
             - --api.insecure=true
             - --ping=true
             - --ping.entrypoint=traefik
+          env:
+            - name: ACME_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: bvr-nexus-secrets
+                  key: ACME_EMAIL
           ports:
             - name: web
               containerPort: 80
@@ -82,6 +108,9 @@ spec:
               containerPort: 443
             - name: dashboard
               containerPort: 8080
+          volumeMounts:
+            - name: acme
+              mountPath: /acme
           resources:
             requests:
               cpu: 100m
@@ -101,6 +130,10 @@ spec:
               port: 8080
             initialDelaySeconds: 20
             periodSeconds: 15
+      volumes:
+        - name: acme
+          persistentVolumeClaim:
+            claimName: traefik-acme
 ---
 # Public ingress service (LoadBalancer — receives external traffic on 80/443)
 apiVersion: v1

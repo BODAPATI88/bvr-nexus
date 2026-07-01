@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-site
+  namespace: bvr-nexus
+  labels:
+    app: public-site
+    tier: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: public-site
+  template:
+    metadata:
+      labels:
+        app: public-site
+    spec:
+      containers:
+        - name: public-site
+          image: bvr-nexus/public-site:2.0.0
+          ports:
+            - containerPort: 8000
+          env:
+            - name: CEO_URL
+              value: "https://ceo.bvrinfra.in"
+            - name: OPS_URL
+              value: "https://ops.bvrinfra.in"
+            - name: API_URL
+              value: "https://api.bvrinfra.in"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-site
+  namespace: bvr-nexus
+spec:
+  selector:
+    app: public-site
+  ports:
+    - name: http
+      port: 8003
+      targetPort: 8000
+  type: ClusterIP

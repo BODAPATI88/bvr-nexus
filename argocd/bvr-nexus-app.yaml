@@ -18,7 +18,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/bodapati88/bvr-nexus
-    targetRevision: claude/bvr-nexus-architecture-v8inv5
+    targetRevision: main
     path: k8s
   destination:
     server: https://kubernetes.default.svc

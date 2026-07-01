@@ -47,6 +47,7 @@ kubectl create secret generic bvr-nexus-secrets \
   --from-literal=KIMI_API_KEY="${KIMI_API_KEY:-}" \
   --from-literal=GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
   --from-literal=SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}" \
+  --from-literal=ACME_EMAIL="${ACME_EMAIL:-admin@bvrinfra.in}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo ""

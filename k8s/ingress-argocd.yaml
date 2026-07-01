@@ -1,0 +1,32 @@
+# ArgoCD Ingress — deployed in the 'argocd' namespace (not bvr-nexus).
+# Apply separately after ArgoCD is installed:
+#   kubectl apply -f k8s/ingress-argocd.yaml
+#
+# ArgoCD server must be started with --insecure flag (or TLS passthrough configured)
+# when terminating TLS at the ingress layer. Add to argocd-server deployment args:
+#   --insecure
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-argocd
+  namespace: argocd
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - argo.bvrinfra.in
+  rules:
+    - host: argo.bvrinfra.in
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

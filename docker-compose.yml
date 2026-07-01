@@ -592,6 +592,35 @@ services:
     networks:
       - bvr-network
 
+  # ───────────────────────────────────────────
+  # PUBLIC COMPANY WEBSITE
+  # ───────────────────────────────────────────
+  public-site:
+    build: ./public-site
+    container_name: bvr-public-site
+    environment:
+      CEO_URL: http://localhost:8002/ceo
+      OPS_URL: http://localhost:8002
+      API_URL: http://localhost:8000
+    ports:
+      - "8003:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    networks:
+      - bvr-network
+
 volumes:
   postgres_data:
   redis_data:
