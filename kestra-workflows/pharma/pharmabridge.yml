@@ -1,0 +1,113 @@
+id: pharmabridge-analysis
+namespace: bvr.pharma
+description: |
+  Pharmabridge clinical trial analysis workflow.
+  Triggered by webhook; submits an event to BVR Nexus and waits for completion.
+  Kestra contains only HTTP calls, waits, and notifications — no business logic.
+
+labels:
+  domain: pharma
+  tier: integration
+  version: "1.0.0"
+
+inputs:
+  - id: trial_id
+    type: STRING
+    description: "Clinical trial identifier (e.g. NCT12345678)"
+  - id: data_source
+    type: STRING
+    description: "Source data format: csv | hl7 | fhir"
+    defaults: csv
+  - id: analysis_type
+    type: STRING
+    description: "Analysis type: efficacy | safety | enrollment"
+    defaults: efficacy
+  - id: data_url
+    type: STRING
+    description: "MinIO or external URL of the source data file"
+    defaults: ""
+  - id: notify_slack
+    type: BOOLEAN
+    description: "Send Slack notification on completion"
+    defaults: false
+
+triggers:
+  - id: webhook
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: "pharmabridge-webhook-key"
+
+tasks:
+  - id: validate-inputs
+    type: io.kestra.plugin.core.flow.Sequential
+    tasks:
+      - id: log-request
+        type: io.kestra.plugin.core.log.Log
+        message: |
+          Pharmabridge analysis requested.
+          Trial: {{ inputs.trial_id }}
+          Type:  {{ inputs.analysis_type }}
+          Format: {{ inputs.data_source }}
+
+  - id: submit-event
+    type: io.kestra.plugin.core.http.Request
+    uri: "http://bvr-api:8000/api/v1/events"
+    method: POST
+    headers:
+      Content-Type: application/json
+      Authorization: "Bearer {{ secret('BVR_SERVICE_TOKEN') }}"
+    body: |
+      {
+        "event_type": "bvr.pharma.trial.analyze",
+        "user_id": "kestra-orchestrator",
+        "source": "kestra",
+        "payload": {
+          "trial_id": "{{ inputs.trial_id }}",
+          "data_source": "{{ inputs.data_source }}",
+          "analysis_type": "{{ inputs.analysis_type }}",
+          "data_url": "{{ inputs.data_url }}",
+          "notify_slack": {{ inputs.notify_slack }},
+          "correlation_id": "{{ execution.id }}"
+        }
+      }
+
+  - id: wait-for-completion
+    type: io.kestra.plugin.core.flow.Pause
+    delay: PT5M
+    description: "Wait up to 5 minutes for the worker to complete analysis"
+
+  - id: poll-result
+    type: io.kestra.plugin.core.http.Request
+    uri: "http://bvr-api:8000/api/v1/events/{{ outputs['submit-event'].body | jq('.event_id') | first }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ secret('BVR_SERVICE_TOKEN') }}"
+
+  - id: notify-completion
+    type: io.kestra.plugin.core.flow.Sequential
+    tasks:
+      - id: log-result
+        type: io.kestra.plugin.core.log.Log
+        message: |
+          Pharmabridge analysis complete.
+          Trial:  {{ inputs.trial_id }}
+          Result: {{ outputs['poll-result'].body }}
+
+errors:
+  - id: notify-failure
+    type: io.kestra.plugin.core.http.Request
+    uri: "http://bvr-api:8000/api/v1/events"
+    method: POST
+    headers:
+      Content-Type: application/json
+      Authorization: "Bearer {{ secret('BVR_SERVICE_TOKEN') }}"
+    body: |
+      {
+        "event_type": "bvr.notification.send",
+        "user_id": "kestra-orchestrator",
+        "source": "kestra",
+        "payload": {
+          "channel": "#pharmabridge",
+          "message": "Pharmabridge analysis FAILED for trial {{ inputs.trial_id }} — execution {{ execution.id }}",
+          "severity": "error"
+        }
+      }

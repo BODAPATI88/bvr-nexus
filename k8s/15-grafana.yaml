@@ -39,6 +39,10 @@ spec:
                 secretKeyRef:
                   name: bvr-nexus-secrets
                   key: GF_ADMIN_PASSWORD
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"
           volumeMounts:
             - name: data
               mountPath: /var/lib/grafana

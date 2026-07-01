@@ -295,6 +295,123 @@ capabilities:
         cost:
           per_request: 0.0
 
+  # ── Capability: pharma.data.ingest ──
+  pharma.data.ingest:
+    description: "Ingest clinical trial data from CSV, HL7, or FHIR sources into MinIO"
+    version: "1.0.0"
+    input_schema: "schemas/pharma_ingest_input.json"
+    output_schema: "schemas/pharma_ingest_output.json"
+    required_permissions: ["pharma:read", "storage:write"]
+    data_classification:
+      sensitivity: high
+      contains_phi: true
+      compliance: [HIPAA, GDPR, GCP_ICH_E6]
+    sla:
+      max_duration_ms: 60000
+      max_cost_usd: 0.10
+      max_retry_count: 2
+
+    providers:
+      - id: pharmabridge_plugin
+        name: "Pharmabridge Ingest"
+        plugin_id: "pharma/pharmabridge"
+        priority: 1
+        selection:
+          fallback_enabled: false
+        constraints:
+          rate_limit: {requests: 20, window: "1m"}
+          allowed_regions: ["eu-west-1", "us-east-1"]
+        config:
+          api_key: "vault://secrets/pharmabridge/api_key"
+          timeout: "60s"
+        cost:
+          per_request: 0.0
+
+  # ── Capability: pharma.trial.analyze ──
+  pharma.trial.analyze:
+    description: "Run AI-assisted analysis on clinical trial data (efficacy, safety, enrollment)"
+    version: "1.0.0"
+    input_schema: "schemas/pharma_analyze_input.json"
+    output_schema: "schemas/pharma_analyze_output.json"
+    required_permissions: ["pharma:read", "ai:call"]
+    data_classification:
+      sensitivity: high
+      contains_phi: true
+      compliance: [HIPAA, GDPR, GCP_ICH_E6]
+    sla:
+      max_duration_ms: 120000
+      max_cost_usd: 1.00
+      max_retry_count: 1
+
+    providers:
+      - id: claude_pharma
+        name: "Claude (Pharma Analysis)"
+        plugin_id: "ai/claude"
+        priority: 1
+        selection:
+          cost_weight: 0.2
+          latency_weight: 0.2
+          quality_weight: 0.6
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 10, window: "1m"}
+          max_cost_per_call: 1.00
+          allowed_regions: ["eu-west-1", "us-east-1"]
+        config:
+          api_key: "vault://secrets/anthropic/api_key"
+          model: "claude-sonnet-4"
+          timeout: "120s"
+        cost:
+          per_input_token: 0.003
+          per_output_token: 0.015
+
+      - id: gpt_pharma
+        name: "GPT (Pharma Analysis)"
+        plugin_id: "ai/gpt"
+        priority: 2
+        selection:
+          cost_weight: 0.3
+          latency_weight: 0.3
+          quality_weight: 0.4
+          fallback_enabled: true
+        constraints:
+          rate_limit: {requests: 20, window: "1m"}
+          max_cost_per_call: 0.80
+          allowed_regions: ["eu-west-1", "us-east-1"]
+        config:
+          api_key: "vault://secrets/openai/api_key"
+          model: "gpt-5"
+          timeout: "120s"
+        cost:
+          per_input_token: 0.0025
+          per_output_token: 0.012
+
+  # ── Capability: pharma.report.generate ──
+  pharma.report.generate:
+    description: "Generate and store structured clinical trial analysis reports in MinIO"
+    version: "1.0.0"
+    required_permissions: ["pharma:read", "storage:write"]
+    sla:
+      max_duration_ms: 30000
+      max_cost_usd: 0.05
+      max_retry_count: 2
+
+    providers:
+      - id: pharmabridge_report
+        name: "Pharmabridge Report Generator"
+        plugin_id: "pharma/pharmabridge"
+        priority: 1
+        selection:
+          fallback_enabled: false
+        constraints:
+          rate_limit: {requests: 20, window: "1m"}
+        config:
+          output_format: json
+          storage_prefix: "artifacts/pharmabridge/reports/"
+          timeout: "30s"
+        cost:
+          per_request: 0.0
+
   # ── Capability: knowledge_retrieval ──
   knowledge_retrieval:
     description: "Retrieve relevant context from the vector knowledge base"
@@ -352,3 +469,15 @@ workflow_overrides:
           priority: 2
       # Override: research needs higher quality, cost less important
       selection_mode: quality
+
+  bvr.pharma.trial.analyze:
+    pharma.trial.analyze:
+      # Claude primary for regulated/high-stakes analysis; no Kimi (data residency)
+      providers:
+        - id: claude_pharma
+          priority: 1
+        - id: gpt_pharma
+          priority: 2
+      selection_mode: quality
+      constraints:
+        allowed_regions: ["eu-west-1", "us-east-1"]

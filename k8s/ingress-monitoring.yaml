@@ -1,7 +1,9 @@
+# Grafana — self-authenticating (GF_AUTH_ANONYMOUS_ENABLED=false).
+# No extra middleware needed; Grafana enforces its own login.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ingress-monitoring
+  name: ingress-grafana
   namespace: bvr-nexus
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -12,9 +14,6 @@ spec:
   tls:
     - hosts:
         - grafana.bvrinfra.in
-        - prometheus.bvrinfra.in
-        - jaeger.bvrinfra.in
-        - loki.bvrinfra.in
   rules:
     - host: grafana.bvrinfra.in
       http:
@@ -26,6 +25,27 @@ spec:
                 name: grafana
                 port:
                   number: 3000
+---
+# Prometheus, Loki, Jaeger — no built-in auth; protected by Traefik BasicAuth.
+# Secret 'monitoring-auth-secret' created by k8s/create-secrets.sh.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-telemetry
+  namespace: bvr-nexus
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
+    traefik.ingress.kubernetes.io/router.middlewares: bvr-nexus-monitoring-basic-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - prometheus.bvrinfra.in
+        - jaeger.bvrinfra.in
+        - loki.bvrinfra.in
+  rules:
     - host: prometheus.bvrinfra.in
       http:
         paths:

@@ -1,0 +1,57 @@
+version: "1.0.0"
+
+input:
+  type: object
+  required:
+    - trial_id
+    - data_source
+    - analysis_type
+  properties:
+    trial_id:
+      type: string
+      description: "Unique clinical trial identifier (e.g. NCT12345678)"
+      pattern: "^[A-Z0-9\\-]{6,20}$"
+    data_source:
+      type: string
+      enum: [csv, hl7, fhir]
+      description: "Source data format"
+    analysis_type:
+      type: string
+      enum: [efficacy, safety, enrollment]
+      description: "Type of analysis to perform"
+    data_url:
+      type: string
+      description: "MinIO artifact URL or external URL of the source data"
+    prompt_override:
+      type: string
+      description: "Optional prompt override; uses registered prompt if omitted"
+    notify_slack:
+      type: boolean
+      default: false
+      description: "Send Slack notification on completion"
+
+output:
+  type: object
+  properties:
+    report_url:
+      type: string
+      description: "MinIO URL of the generated PDF/JSON report"
+    summary:
+      type: string
+      description: "Plain-text executive summary of findings"
+    findings:
+      type: array
+      items:
+        type: object
+        properties:
+          category: {type: string}
+          severity: {type: string, enum: [info, warning, critical]}
+          description: {type: string}
+    token_usage:
+      type: object
+      properties:
+        input_tokens: {type: integer}
+        output_tokens: {type: integer}
+        cost_usd: {type: number}
+    duration_ms:
+      type: integer

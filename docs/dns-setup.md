@@ -64,6 +64,30 @@ kubectl logs -n bvr-nexus -l app=traefik -f | grep -i acme
 kubectl exec -n bvr-nexus deploy/traefik -- cat /acme/acme.json | python3 -m json.tool | grep -A3 '"domain"'
 ```
 
+## Access Control Matrix
+
+Every exposed subdomain has an explicit protection strategy. No subdomain is anonymously accessible.
+
+| Subdomain | Authentication | Network Restriction | Notes |
+|-----------|---------------|---------------------|-------|
+| `bvrinfra.in` | Public (no auth) | None — public site | Marketing/info only |
+| `www.bvrinfra.in` | Public (no auth) | None — public site | Alias of root |
+| `api.bvrinfra.in` | JWT (Keycloak) | None | All endpoints require Bearer token |
+| `ai.bvrinfra.in` | BVR service token | None | Internal service; token required |
+| `ops.bvrinfra.in` | BVR service token | None | Dashboard — token on backend calls |
+| `ceo.bvrinfra.in` | BVR service token | None | Dashboard — token on backend calls |
+| `grafana.bvrinfra.in` | Grafana login | None | `GF_AUTH_ANONYMOUS_ENABLED=false` |
+| `prometheus.bvrinfra.in` | BasicAuth (Traefik) | None | `monitoring-auth-secret` |
+| `jaeger.bvrinfra.in` | BasicAuth (Traefik) | None | `monitoring-auth-secret` |
+| `loki.bvrinfra.in` | BasicAuth (Traefik) | None | `monitoring-auth-secret` |
+| `keycloak.bvrinfra.in` | Keycloak admin | None | Requires Keycloak credentials |
+| `vault.bvrinfra.in` | Vault token + IPAllowList | VPN/internal only | RFC1918 + custom VPN CIDR |
+| `kestra.bvrinfra.in` | Kestra credentials | None | Kestra admin login required |
+| `minio.bvrinfra.in` | MinIO access key | None | MinIO enforces own auth |
+| `argo.bvrinfra.in` | ArgoCD SSO/local | None | ArgoCD enforces own auth |
+
+**No public attack surface**: the only subdomain without authentication is `bvrinfra.in` / `www.bvrinfra.in` (the public marketing site). Every other subdomain requires credentials at the application layer, Traefik middleware, or both.
+
 ## Security Notes
 
 - **`vault.bvrinfra.in`** — Vault should be restricted to internal/VPN access only. Apply a Traefik `IPAllowList` middleware to `k8s/ingress-security.yaml` before exposing publicly:
