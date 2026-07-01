@@ -1,0 +1,29 @@
+id: kimi
+name: Moonshot Kimi
+version: 2.0.0
+type: ai
+author: BVR Group
+description: |
+  Moonshot Kimi integration for reasoning, code analysis,
+  and creative tasks. Supports moonshot-v1-128k with a 128k context window.
+
+capabilities:
+  - code_analysis
+  - reasoning
+  - creative_writing
+  - document_review
+
+dependencies:
+  - httpx>=0.27.0
+
+config:
+  api_key: "${KIMI_API_KEY}"
+  model: "moonshot-v1-128k"
+  max_tokens: 4000
+  temperature: 0.7
+
+permissions:
+  - name: api_key
+    description: "Moonshot API key for authentication"
+    required: true
+    secret: true

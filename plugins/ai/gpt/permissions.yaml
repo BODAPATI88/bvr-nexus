@@ -1,0 +1,16 @@
+permissions:
+  - name: api_key
+    description: "OpenAI API key"
+    required: true
+    secret: true
+    scope: global
+
+  - name: rate_limit
+    description: "Rate limit for API calls"
+    default: 100
+    unit: requests_per_minute
+
+  - name: max_cost_per_call
+    description: "Maximum cost per API call"
+    default: 1.00
+    unit: usd
