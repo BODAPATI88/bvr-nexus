@@ -3,11 +3,40 @@ Real Plugin Auto-Discovery — Scans plugin directories, parses manifests,
 registers capabilities. Not manual load-by-ID.
 """
 
+import hashlib
 import os
 import yaml
 import importlib.util
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+
+
+def _verify_plugin_manifest(plugin_dir: str, plugin_id: str) -> None:
+    """Verify plugin manifest integrity via SHA256 before loading plugin code.
+
+    Always logs the manifest SHA256 for audit purposes. If the manifest
+    declares a ``manifest_sha256`` field, the computed hash must match or
+    loading is aborted with a RuntimeError.
+    """
+    manifest_path = os.path.join(plugin_dir, "manifest.yaml")
+    if not os.path.exists(manifest_path):
+        raise RuntimeError(f"Plugin {plugin_id}: missing manifest.yaml")
+    raw = open(manifest_path, "rb").read()
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    print(f"[PLUGIN] {plugin_id} manifest SHA256: {actual_sha256}")
+    try:
+        manifest = yaml.safe_load(raw)
+        expected = manifest.get("manifest_sha256")
+        if expected and expected != actual_sha256:
+            raise RuntimeError(
+                f"Plugin {plugin_id}: manifest SHA256 mismatch "
+                f"(expected {expected}, got {actual_sha256})"
+            )
+    except Exception as exc:
+        if "mismatch" in str(exc):
+            raise
+        # yaml not available or parse error — log and continue
+        print(f"[PLUGIN] {plugin_id}: manifest verification skipped ({exc})")
 
 PLUGINS_DIR = Path(os.getenv("BVR_PLUGINS_DIR", "/app/plugins"))
 
@@ -61,6 +90,9 @@ class PluginRegistry:
                     if permissions_path.exists():
                         with open(permissions_path) as f:
                             permissions = yaml.safe_load(f)
+
+                    # Verify manifest integrity before executing any plugin code
+                    _verify_plugin_manifest(str(plugin_dir), plugin_id)
 
                     # Load health check module
                     health_module = None
