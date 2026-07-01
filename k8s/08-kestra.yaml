@@ -16,6 +16,8 @@ metadata:
   namespace: bvr-nexus
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: kestra
@@ -52,7 +54,7 @@ spec:
         - name: kestra
           image: kestra/kestra:v0.18.0
           imagePullPolicy: IfNotPresent
-          command: ["/app/kestra", "server", "standalone"]
+          args: ["server", "standalone"]
           ports:
             - name: ui
               containerPort: 8080
