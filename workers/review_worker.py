@@ -109,15 +109,20 @@ class ReviewWorker(BaseWorker):
             content_type="text/markdown"
         )
 
-        # Step 5: Notify via Slack
-        await self.registry.execute(
-            "productivity/slack",
-            {"webhook_url": os.getenv("SLACK_WEBHOOK_URL", "")},
-            {
-                "text": f"Review complete for {repo_url}\nScore: {score}/100",
-                "channel": "#bvr-reviews"
-            }
-        )
+        # Step 5: Notify via Slack (best-effort — missing webhook must not fail the review)
+        slack_url = os.getenv("SLACK_WEBHOOK_URL", "")
+        if slack_url and not slack_url.startswith("https://hooks.slack.com/services/YOUR"):
+            try:
+                await self.registry.execute(
+                    "productivity/slack",
+                    {"webhook_url": slack_url},
+                    {
+                        "text": f"Review complete for {repo_url}\nScore: {score}/100",
+                        "channel": "#bvr-reviews"
+                    }
+                )
+            except Exception as e:
+                print(f"[REVIEW] Slack notification failed (non-fatal): {e}")
 
         return {
             "score": score,
