@@ -1,5 +1,6 @@
+import json
 import httpx
-from typing import Dict, Any
+from typing import AsyncGenerator, Dict, Any
 
 async def execute(config: dict, inputs: dict) -> Dict[str, Any]:
     """Execute OpenAI GPT completion."""
@@ -40,3 +41,47 @@ async def execute(config: dict, inputs: dict) -> Dict[str, Any]:
             ),
             "model": config.get("model", "gpt-4o"),
         }
+
+
+async def stream_execute(config: dict, inputs: dict) -> AsyncGenerator[str, None]:
+    """Stream OpenAI GPT completion via SSE."""
+    messages = []
+    system_prompt = inputs.get("system_prompt", "")
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": inputs["prompt"]})
+
+    async with httpx.AsyncClient() as client:
+        async with client.stream(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": config.get("model", "gpt-4o"),
+                "max_tokens": inputs.get("max_tokens", 4000),
+                "temperature": inputs.get("temperature", 0.7),
+                "messages": messages,
+                "stream": True,
+            },
+            timeout=120.0,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line:
+                    continue
+                if line == "data: [DONE]":
+                    break
+                if line.startswith("data: "):
+                    payload = line[len("data: "):]
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("delta", {}).get("content", "")
+                        if content:
+                            yield content

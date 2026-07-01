@@ -8,10 +8,11 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
@@ -286,6 +287,104 @@ async def completions(request: CompletionRequest):
         await r.aclose()
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Streaming endpoint
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/stream")
+async def stream_completions(
+    capability: str,
+    prompt: str,
+    model_preference: Optional[str] = None,
+    max_tokens: int = 4000,
+    temperature: float = 0.7,
+    workflow_id: Optional[str] = None,
+):
+    """
+    SSE streaming endpoint. Returns text/event-stream.
+    Each chunk is: data: <text>\\n\\n
+    Final chunk: data: [DONE]\\n\\n
+    """
+    from bvr_sdk import get_registry
+
+    # Resolve provider list from Constitution
+    matcher = get_matcher()
+    try:
+        providers = matcher.resolve_with_fallback(
+            capability_id=capability,
+            workflow_id=workflow_id,
+        )
+    except CapabilityNotFound:
+        raise HTTPException(status_code=400, detail=f"Capability not found: {capability}")
+    except NoHealthyProvider:
+        raise HTTPException(
+            status_code=503, detail=f"No healthy providers for capability: {capability}"
+        )
+
+    if not providers:
+        raise HTTPException(status_code=503, detail="No providers available")
+
+    # Select first non-open provider (respecting model_preference)
+    selected_provider = None
+    selected_config = None
+    selected_plugin = None
+
+    for provider in providers:
+        if model_preference and provider.id != model_preference:
+            continue
+        cb = _get_cb(provider.id)
+        if cb.is_open():
+            print(f"[AI-GATEWAY] Circuit open for {provider.id}, skipping")
+            continue
+        try:
+            config = matcher.get_provider_config(provider.id)
+            registry = get_registry()
+            plugin = registry.get_plugin(provider.plugin_id)
+            if not plugin or not plugin.get("worker_module"):
+                continue
+            selected_provider = provider
+            selected_config = config
+            selected_plugin = plugin
+            break
+        except Exception as e:
+            print(f"[AI-GATEWAY] Could not prepare provider {provider.id}: {e}")
+            continue
+
+    if not selected_provider or not selected_plugin:
+        raise HTTPException(status_code=503, detail="No providers available for streaming")
+
+    inputs = {
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "system_prompt": "",
+    }
+
+    async def sse_generator() -> AsyncGenerator[str, None]:
+        worker_module = selected_plugin["worker_module"]
+        stream_func = getattr(worker_module, "stream_execute", None)
+        cb = _get_cb(selected_provider.id)
+        try:
+            if stream_func is not None:
+                async for chunk in stream_func(selected_config, inputs):
+                    yield f"data: {chunk}\n\n"
+            else:
+                # Fallback: call blocking execute and yield whole response as one chunk
+                execute_func = getattr(worker_module, "execute")
+                result = await execute_func(selected_config, inputs)
+                yield f"data: {result['text']}\n\n"
+            cb.record_success()
+            matcher.update_health(selected_provider.id, True)
+        except Exception as e:
+            cb.record_failure()
+            matcher.update_health(selected_provider.id, False)
+            print(f"[AI-GATEWAY] Streaming provider {selected_provider.id} failed: {e}")
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(sse_generator(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
