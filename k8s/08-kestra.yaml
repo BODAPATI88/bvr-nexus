@@ -52,7 +52,7 @@ spec:
         - name: kestra
           image: kestra/kestra:v0.18.0
           imagePullPolicy: IfNotPresent
-          command: ["server", "standalone"]
+          command: ["/app/kestra", "server", "standalone"]
           ports:
             - name: ui
               containerPort: 8080
